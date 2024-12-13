@@ -1,0 +1,108 @@
+diff --git a/src/chardecoder/charBasis.ml b/src/chardecoder/charBasis.ml
+index 93a4ce75..938cbd1e 100644
+--- a/src/chardecoder/charBasis.ml
++++ b/src/chardecoder/charBasis.ml
+@@ -142,6 +142,18 @@ let is_close_punctuation = function
+   | _ -> false
+ 
+ 
++let is_jlreq_punctuation = function
++  | JLOP | JLCP | JLHY | JLNS | JLMD | JLFS | JLCM | JLPL | JLSM
++      -> true
++  | _ -> false
++
++
++let is_middle_punctuation = function
++  | JLMD
++      -> true
++  | _ -> false
++
++
+ type line_break_regexp_element =
+   | LBRESet       of line_break_class list   (* [a ... a] *)
+   | LBRENotOf     of line_break_class list   (* [^ a ... a] *)
+diff --git a/src/chardecoder/convertText.ml b/src/chardecoder/convertText.ml
+index 2e982311..0734c213 100644
+--- a/src/chardecoder/convertText.ml
++++ b/src/chardecoder/convertText.ml
+@@ -27,27 +27,48 @@ let half_kern (hsinfo : horz_string_info) : lb_pure_box =
+   LBAtom((natural (hsinfo.text_font_size *% -0.5), Length.zero, Length.zero), EvHorzEmpty)
+ 
+ 
++let get_corrected_font_size ctx script =
++  let (_, font_ratio, _) = get_font_with_ratio ctx script in
++    ctx.font_size *% font_ratio
++
++
+ let pure_space_between_scripts ctx1 ctx2 size (script1 : script) (lbc1 : line_break_class) (script2 : script) (lbc2 : line_break_class) =
+-  if is_open_punctuation lbc1 || is_close_punctuation lbc2 then
+-    None
+-  else
+-    match
+-      (ctx1.script_space_map |> ScriptSpaceMap.find_opt (script1, script2),
+-       ctx2.script_space_map |> ScriptSpaceMap.find_opt (script1, script2))
+-    with
+-    | (None, None) ->
+-        None
+-
+-    | (Some(tuple), None)
+-    | (None, Some(tuple)) ->
+-        let (r0, r1, r2) = tuple in
+-          Some(LBAtom((natural (size *% r0), size *% r1, size *% r2), EvHorzEmpty))
+-
+-    | (Some(tuple1), Some(tuple2)) ->
+-        let (r10, r11, r12) = tuple1 in
+-        let (r20, r21, r22) = tuple2 in
+-        let (r0, r1, r2) = (max r10 r20, max r11 r21, max r12 r22) in
+-          Some(LBAtom((natural (size *% r0), size *% r1, size *% r2), EvHorzEmpty))
++  let size1 = get_corrected_font_size ctx1 script1 in
++  let size2 = get_corrected_font_size ctx2 script2 in
++  match
++    ((is_jlreq_punctuation lbc1,
++      is_open_punctuation lbc1,
++      is_close_punctuation lbc1,
++      is_middle_punctuation lbc1),
++     (is_jlreq_punctuation lbc2,
++      is_open_punctuation lbc2,
++      is_close_punctuation lbc2,
++      is_middle_punctuation lbc2),
++     (ctx1.script_space_map |> ScriptSpaceMap.find_opt (script1, script2),
++      ctx2.script_space_map |> ScriptSpaceMap.find_opt (script1, script2)))
++  with
++  | (_, _, (None, None)) ->
++      None
++  | ((_, true, _, _), _, _) -> None
++  | (_, (_, _, true, _), _) -> None
++  | ((true, _, true, _), (_, _, false, false), _) ->
++      Some(LBAtom((natural (size1 *% 0.5), (size1 *%0.25), (size1 *% 0.25)), EvHorzEmpty))
++  | ((_, false, _, false), (true, true, _, _), _) ->
++      Some(LBAtom((natural (size2 *% 0.5), (size2 *%0.25), (size2 *% 0.25)), EvHorzEmpty))
++  | ((true, _, _, true), _, _) ->
++      Some(LBAtom((natural (size1 *% 0.25), (size1 *%0.125), (size1 *% 0.125)), EvHorzEmpty))
++  | (_, (true, _, _, true), _) ->
++      Some(LBAtom((natural (size2 *% 0.25), (size2 *%0.125), (size2 *% 0.125)), EvHorzEmpty))
++  | (_, _, (Some(tuple), None))
++  | (_, _, (None, Some(tuple))) ->
++      let (r0, r1, r2) = tuple in
++        Some(LBAtom((natural (size *% r0), size *% r1, size *% r2), EvHorzEmpty))
++
++  | (_, _, (Some(tuple1), Some(tuple2))) ->
++      let (r10, r11, r12) = tuple1 in
++      let (r20, r21, r22) = tuple2 in
++      let (r0, r1, r2) = (max r10 r20, max r11 r21, max r12 r22) in
++        Some(LBAtom((natural (size *% r0), size *% r1, size *% r2), EvHorzEmpty))
+ (*
+     match (script1, script2) with
+     | (HanIdeographic    , Latin             )
+@@ -74,11 +95,6 @@ let pure_space ctx : lb_pure_box =
+     LBAtom((widinfo, Length.zero, Length.zero), EvHorzEmpty)
+ 
+ 
+-let get_corrected_font_size ctx script =
+-  let (_, font_ratio, _) = get_font_with_ratio ctx script in
+-    ctx.font_size *% font_ratio
+-
+-
+ (* -- 'pure_halfwidth_space_soft': inserts a shrinkable CJK halfwidth space -- *)
+ let pure_halfwidth_space_soft fontsize : lb_pure_box =
+   let widinfo = make_width_info (fontsize *% 0.5) (fontsize *% 0.25) (fontsize *% 0.25) in

@@ -1,0 +1,143 @@
+%% showexpl-parse.satyg
+% https://github.com/tairahikaru/satysfi-are-2024
+
+@stage: persistent
+@require: list
+
+module ShowExpl : sig
+
+  val show-expl-parse :
+    (((string * int * int) * string) -> int -> string -> 'a -> 'b) -> ((string * int * int) * string) -> 'a -> ((string * int * int) * string) -> 'b
+  val show-expl-parse-without-end :
+    (((string * int * int) * string) -> int -> string -> 'a -> 'b) -> ((string * int * int) * string) -> 'a -> 'b
+
+  val repeat-space : int -> string
+
+  val show-expl-chop : (string -> string -> 'a -> 'b) -> int option -> ((string * int * int) * string) -> int -> string -> 'a -> 'b
+
+end = struct
+
+  let repeat-space n =
+    let-rec aux n s =
+      if n > 0 then
+        aux (n - 1) (s ^ #` `#)
+      else
+        s
+    in
+    aux n ` `
+
+  let line-break-string = string-unexplode [10]
+
+  let show-expl-parse continuation (start-pos, sstring) code (end-pos, _) =
+    let (file, sline, scol) = start-pos in
+    let (_, eline, ecol) = end-pos in
+    let (indent-amount, raw) =
+      let aux ln line =
+        let line-num = ln + 1 in
+        if line-num < sline || eline < line-num then
+          (0, ` `)
+        else
+          if line-num == sline then
+            let [(i, _)] = split-into-lines line in
+            (i, ` `)
+          else if line-num == eline then
+            (0, ` `)
+          else
+            (0, line ^ line-break-string)
+      in
+      read-file file
+      |> List.mapi aux
+      |> List.fold-left (fun (i1, s1) (i2, s2) -> (i1 + i2, s1 ^ s2)) (0, ` `)
+    in
+    continuation (start-pos, sstring) indent-amount raw code
+
+  let get-indent-unit file =
+    let aux result (ia, _) =
+      if ia < result && 0 < ia then
+        ia
+      else
+        result
+    in
+    read-file file
+    |> List.fold-left (fun l r -> l ^ line-break-string ^ r) ` `
+    |> split-into-lines
+    |> List.fold-left aux 1000
+
+  let invalid-indentation file line =
+    let message =
+      `Invalid indentation at "`
+      ^ file
+      ^ `", line `
+      ^ arabic line
+      ^ `.`
+    in
+    abort-with-message message
+
+  let show-expl-parse-without-end continuation (start-pos, sstring) code =
+    let (file, sline, scol) = start-pos in
+    let (indent-amount, raw) =
+      let-rec aux ln (ia, r) lst =
+        match lst with
+        | [] ->
+          let () =invalid-indentation file (- 1) in
+          (ia, r)
+        | ((space, line) :: xs) ->
+          if sline < ln then
+            if ia < space then
+              aux (ln + 1) (ia, r ^ (repeat-space space) ^ line ^ line-break-string) xs
+            else if ia == space then
+              (ia, r)
+            else % ia > space
+              match (space, string-explode line) with
+              | (0, []) ->
+                aux (ln + 1) (ia, r ^ line ^ line-break-string) xs
+              | _ ->
+                let () = invalid-indentation file ln in
+                (ia, r)
+          else if sline == ln then
+            aux (ln + 1) (space, r) xs
+          else
+            aux (ln + 1) (ia, r) xs
+      in
+      read-file file
+      |> List.fold-right (fun l r -> l ^ line-break-string ^ r) ` `
+      |> split-into-lines
+      |> aux 1 (- 1, ` `)
+    in
+    continuation (start-pos, sstring) indent-amount raw code
+
+  let show-expl-chop continuation indent-unit-option (start-pos, sstring) indent-amount raw code =
+    let (file, sline, scol) = start-pos in
+    let indent-unit =
+      match indent-unit-option with
+      | Some(i) -> i
+      | None -> get-indent-unit file
+    in
+    let processed =
+      let aux l (ss, line) =
+        let i = ss - indent-amount - indent-unit in
+          if i < 0 then
+            % 空行は無視
+            match string-explode line with
+            | [] -> ` `
+            | _ ->
+              let linenum = sline + l + 1 in
+              let () = invalid-indentation file linenum in
+              ` `
+          else
+            (repeat-space i ) ^ line
+      in
+      raw
+      |> split-into-lines
+      |> List.mapi aux
+      |> List.fold-left (fun l r -> l ^ line-break-string ^ r) ` `
+    in
+    continuation
+      sstring
+      % 先頭に余計な改行文字
+      (string-sub processed 1 ((string-length processed) - 1))
+      code
+
+end
+
+%% EOF

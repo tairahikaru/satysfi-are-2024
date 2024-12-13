@@ -1,0 +1,17 @@
+diff --git a/src/backend/lineBreak.ml b/src/backend/lineBreak.ml
+index 33088e74..1bc4c1dc 100644
+--- a/src/backend/lineBreak.ml
++++ b/src/backend/lineBreak.ml
+@@ -983,10 +983,10 @@ let main ((breakability_top, paragraph_margin_top) : breakability * length) ((br
+   let vskip_min = ctx.min_gap_of_lines in
+ 
+   let calculate_badness pure_ratio =
+-    (abs (int_of_float (pure_ratio ** 3.))) * 10000
++    abs (int_of_float (pure_ratio ** 3. *. 10000.))
+   in
+ 
+-  let badness_for_too_long = 100000 in
++  let badness_for_too_long = 100000 * 1000 * 10 in
+ 
+   let grph = LineBreakGraph.create () in
+ 

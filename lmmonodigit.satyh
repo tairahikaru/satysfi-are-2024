@@ -1,0 +1,345 @@
+%% lmmonodigit.satyh
+% https://github.com/tairahikaru/satysfi-are-2024
+@require: list
+
+% graphics-list is generated based on `lmmono10-regular.otf'. The copyright notice is:
+% > Copyright 2003, 2009 B. Jackowski and J. M. Nowacki (on behalf of TeX users groups). This work is released under the GUST Font License --  see http://tug.org/fonts/licenses/GUST-FONT-LICENSE.txt for details.
+% GUST Font License:
+% > This is version 1.0, dated 22 June 2009, of the GUST Font License.
+% > (GUST is the Polish TeX Users Group, http://www.gust.org.pl)
+% >
+% > For the most recent version of this license see
+% > http://www.gust.org.pl/fonts/licenses/GUST-FONT-LICENSE.txt
+% > or
+% > http://tug.org/fonts/licenses/GUST-FONT-LICENSE.txt
+% >
+% > This work may be distributed and/or modified under the conditions
+% > of the LaTeX Project Public License, either version 1.3c of this
+% > license or (at your option) any later version.
+% >
+% > Please also observe the following clause:
+% > 1) it is requested, but not legally required, that derived works be
+% >    distributed only after changing the names of the fonts comprising this
+% >    work and given in an accompanying "manifest", and that the
+% >    files comprising the Work, as listed in the manifest, also be given
+% >    new names. Any exceptions to this request are also given in the
+% >    manifest.
+% >
+% >    We recommend the manifest be given in a separate file named
+% >    MANIFEST-<fontid>.txt, where <fontid> is some unique identification
+% >    of the font family. If a separate "readme" file accompanies the Work,
+% >    we recommend a name of the form README-<fontid>.txt.
+% >
+% > The latest version of the LaTeX Project Public License is in
+% > http://www.latex-project.org/lppl.txt and version 1.3c or later
+% > is part of all distributions of LaTeX version 2006/05/20 or later.
+% You can get the original font from `https://www.gust.org.pl/projects/e-foundry/latin-modern'.
+%
+% Here is the script to generate the graphics-list using otfedcli (https://github.com/gfngfn/otfed).
+% ```
+% #!/bin/sh
+% font= ~/.satysfi/dist/fonts/lmmono10-regular.otf
+% num=0
+% for id in `otfedcli "$font" cmap_word 0123456789 | sed '1d; /^*/,$d; s/.* //'`; do
+%   otfedcli "$font" cff $id /dev/stdout |
+%   grep -o 'path[^>]*stroke="red"' | sed 's/[^"]*"//; s/".*//; s/,/ /g' |
+%   sed 's/[A-Z]/\
+% &/g' | sed '
+%     s/ *$//
+%     /^M/{s///; h; s/\(.*\) \(.*\)/start-path (\1, \2)/;}
+%     /^H/{s///; G; s/\(.*\)\n.* \(.*\)/\1 \2/; h; s/\(.*\) \(.*\)/|> line-to (\1, \2)/;}
+%     /^V/{s///; G; s/\(.*\)\n\(.*\) .*/\2 \1/; h; s/\(.*\) \(.*\)/|> line-to (\1, \2)/;}
+%     /^C/{s///; s/\(.*\) \(.*\) \(.*\) \(.*\) \(.*\) \(.*\)/|> bezier-to (\1, \2) (\3, \4) (\5, \6)/; p; s/.*(//; s/)//; s/,//; h; d;}
+%     /^L/{s///; h; s/\(.*\) \(.*\)/|> line-to (\1, \2)/;}
+%     /^Z/{s//|> close-with-line;/;}
+%   ' | sed '
+%     s/, /&-/g; s/, --/, /g
+%     s/(\([0-9-]\{1,\}\), \([0-9-]\{1,\}\))/(unit *'\'' \1., unit *'\'' \2.)/g
+%     s/-\([0-9]\{1,\}\)./(1000. -. \1.)/g
+%     /^$/d
+%     s/^/  /
+%   ' | sed '
+%     1s/.*/[ % '$num'\
+% &/
+%     $s/.*/&\
+% ];/
+%   ' | sed 's/^/      /'
+%   num=$((num + 1))
+% done
+% ```
+
+module LMMonoDigit : sig
+
+  val get-number-graphics : color -> length -> int -> graphics list
+  val get-number-inline : color -> length -> int -> inline-boxes
+
+end = struct
+
+  let-rec merge-path
+    | [] =
+      `This can't happen!` |> abort-with-message
+    | (x :: []) = x
+    | (x :: xs) = unite-path x (merge-path xs)
+  let graphics-list unit-1000 =
+    let unit = unit-1000 *' 0.001 in
+    [
+      [ % 0
+        start-path (unit *' 474., unit *' (1000. -. 695.))
+        |> bezier-to (unit *' 474., unit *' (1000. -. 509.)) (unit *' 372., unit *' (1000. -. 378.)) (unit *' 262., unit *' (1000. -. 378.))
+        |> bezier-to (unit *' 150., unit *' (1000. -. 378.)) (unit *' 50., unit *' (1000. -. 512.)) (unit *' 50., unit *' (1000. -. 694.))
+        |> bezier-to (unit *' 50., unit *' (1000. -. 880.)) (unit *' 152., unit *' (1000. -. 1011.)) (unit *' 262., unit *' (1000. -. 1011.))
+        |> bezier-to (unit *' 374., unit *' (1000. -. 1011.)) (unit *' 474., unit *' (1000. -. 877.)) (unit *' 474., unit *' (1000. -. 695.))
+        |> close-with-line;
+        start-path (unit *' 405., unit *' (1000. -. 684.))
+        |> bezier-to (unit *' 405., unit *' (1000. -. 832.)) (unit *' 340., unit *' (1000. -. 950.)) (unit *' 262., unit *' (1000. -. 950.))
+        |> bezier-to (unit *' 184., unit *' (1000. -. 950.)) (unit *' 119., unit *' (1000. -. 832.)) (unit *' 119., unit *' (1000. -. 684.))
+        |> bezier-to (unit *' 119., unit *' (1000. -. 538.)) (unit *' 188., unit *' (1000. -. 439.)) (unit *' 262., unit *' (1000. -. 439.))
+        |> bezier-to (unit *' 335., unit *' (1000. -. 439.)) (unit *' 405., unit *' (1000. -. 537.)) (unit *' 405., unit *' (1000. -. 684.))
+        |> close-with-line;
+      ];
+      [ % 1
+        start-path (unit *' 442., unit *' (1000. -. 970.))
+        |> bezier-to (unit *' 442., unit *' (1000. -. 939.)) (unit *' 418., unit *' (1000. -. 939.)) (unit *' 402., unit *' (1000. -. 939.))
+        |> line-to (unit *' 311., unit *' (1000. -. 939.))
+        |> line-to (unit *' 311., unit *' (1000. -. 419.))
+        |> bezier-to (unit *' 311., unit *' (1000. -. 403.)) (unit *' 311., unit *' (1000. -. 378.)) (unit *' 281., unit *' (1000. -. 378.))
+        |> bezier-to (unit *' 262., unit *' (1000. -. 378.)) (unit *' 256., unit *' (1000. -. 390.)) (unit *' 251., unit *' (1000. -. 402.))
+        |> bezier-to (unit *' 213., unit *' (1000. -. 487.)) (unit *' 161., unit *' (1000. -. 498.)) (unit *' 142., unit *' (1000. -. 500.))
+        |> bezier-to (unit *' 126., unit *' (1000. -. 501.)) (unit *' 105., unit *' (1000. -. 503.)) (unit *' 105., unit *' (1000. -. 531.))
+        |> bezier-to (unit *' 105., unit *' (1000. -. 556.)) (unit *' 123., unit *' (1000. -. 561.)) (unit *' 138., unit *' (1000. -. 561.))
+        |> bezier-to (unit *' 157., unit *' (1000. -. 561.)) (unit *' 198., unit *' (1000. -. 555.)) (unit *' 242., unit *' (1000. -. 517.))
+        |> line-to (unit *' 242., unit *' (1000. -. 939.))
+        |> line-to (unit *' 151., unit *' (1000. -. 939.))
+        |> bezier-to (unit *' 135., unit *' (1000. -. 939.)) (unit *' 111., unit *' (1000. -. 939.)) (unit *' 111., unit *' (1000. -. 970.))
+        |> bezier-to (unit *' 111., unit *' (1000. -. 1000.)) (unit *' 136., unit *' (1000. -. 1000.)) (unit *' 151., unit *' (1000. -. 1000.))
+        |> line-to (unit *' 402., unit *' (1000. -. 1000.))
+        |> bezier-to (unit *' 417., unit *' (1000. -. 1000.)) (unit *' 442., unit *' (1000. -. 1000.)) (unit *' 442., unit *' (1000. -. 970.))
+        |> close-with-line;
+      ];
+      [ % 2
+        start-path (unit *' 472., unit *' (1000. -. 959.))
+        |> line-to (unit *' 472., unit *' (1000. -. 933.))
+        |> bezier-to (unit *' 472., unit *' (1000. -. 914.)) (unit *' 472., unit *' (1000. -. 892.)) (unit *' 438., unit *' (1000. -. 892.))
+        |> bezier-to (unit *' 403., unit *' (1000. -. 892.)) (unit *' 403., unit *' (1000. -. 911.)) (unit *' 403., unit *' (1000. -. 939.))
+        |> line-to (unit *' 165., unit *' (1000. -. 939.))
+        |> bezier-to (unit *' 224., unit *' (1000. -. 888.)) (unit *' 320., unit *' (1000. -. 813.)) (unit *' 363., unit *' (1000. -. 773.))
+        |> bezier-to (unit *' 426., unit *' (1000. -. 717.)) (unit *' 472., unit *' (1000. -. 653.)) (unit *' 472., unit *' (1000. -. 573.))
+        |> bezier-to (unit *' 472., unit *' (1000. -. 453.)) (unit *' 371., unit *' (1000. -. 378.)) (unit *' 249., unit *' (1000. -. 378.))
+        |> bezier-to (unit *' 131., unit *' (1000. -. 378.)) (unit *' 52., unit *' (1000. -. 460.)) (unit *' 52., unit *' (1000. -. 545.))
+        |> bezier-to (unit *' 52., unit *' (1000. -. 582.)) (unit *' 80., unit *' (1000. -. 593.)) (unit *' 97., unit *' (1000. -. 593.))
+        |> bezier-to (unit *' 118., unit *' (1000. -. 593.)) (unit *' 141., unit *' (1000. -. 576.)) (unit *' 141., unit *' (1000. -. 548.))
+        |> bezier-to (unit *' 141., unit *' (1000. -. 536.)) (unit *' 136., unit *' (1000. -. 523.)) (unit *' 127., unit *' (1000. -. 516.))
+        |> bezier-to (unit *' 142., unit *' (1000. -. 470.)) (unit *' 189., unit *' (1000. -. 439.)) (unit *' 244., unit *' (1000. -. 439.))
+        |> bezier-to (unit *' 326., unit *' (1000. -. 439.)) (unit *' 403., unit *' (1000. -. 485.)) (unit *' 403., unit *' (1000. -. 573.))
+        |> bezier-to (unit *' 403., unit *' (1000. -. 643.)) (unit *' 354., unit *' (1000. -. 701.)) (unit *' 288., unit *' (1000. -. 756.))
+        |> line-to (unit *' 67., unit *' (1000. -. 942.))
+        |> bezier-to (unit *' 58., unit *' (1000. -. 950.)) (unit *' 52., unit *' (1000. -. 955.)) (unit *' 52., unit *' (1000. -. 969.))
+        |> bezier-to (unit *' 52., unit *' (1000. -. 1000.)) (unit *' 77., unit *' (1000. -. 1000.)) (unit *' 93., unit *' (1000. -. 1000.))
+        |> line-to (unit *' 432., unit *' (1000. -. 1000.))
+        |> bezier-to (unit *' 465., unit *' (1000. -. 1000.)) (unit *' 472., unit *' (1000. -. 991.)) (unit *' 472., unit *' (1000. -. 959.))
+        |> close-with-line;
+      ];
+      [ % 3
+        start-path (unit *' 480., unit *' (1000. -. 826.))
+        |> bezier-to (unit *' 480., unit *' (1000. -. 755.)) (unit *' 433., unit *' (1000. -. 696.)) (unit *' 367., unit *' (1000. -. 666.))
+        |> bezier-to (unit *' 423., unit *' (1000. -. 630.)) (unit *' 451., unit *' (1000. -. 573.)) (unit *' 451., unit *' (1000. -. 519.))
+        |> bezier-to (unit *' 451., unit *' (1000. -. 445.)) (unit *' 378., unit *' (1000. -. 378.)) (unit *' 263., unit *' (1000. -. 378.))
+        |> bezier-to (unit *' 143., unit *' (1000. -. 378.)) (unit *' 73., unit *' (1000. -. 426.)) (unit *' 73., unit *' (1000. -. 495.))
+        |> bezier-to (unit *' 73., unit *' (1000. -. 528.)) (unit *' 98., unit *' (1000. -. 542.)) (unit *' 118., unit *' (1000. -. 542.))
+        |> bezier-to (unit *' 139., unit *' (1000. -. 542.)) (unit *' 162., unit *' (1000. -. 525.)) (unit *' 162., unit *' (1000. -. 497.))
+        |> bezier-to (unit *' 162., unit *' (1000. -. 483.)) (unit *' 156., unit *' (1000. -. 473.)) (unit *' 153., unit *' (1000. -. 470.))
+        |> bezier-to (unit *' 184., unit *' (1000. -. 439.)) (unit *' 255., unit *' (1000. -. 439.)) (unit *' 264., unit *' (1000. -. 439.))
+        |> bezier-to (unit *' 332., unit *' (1000. -. 439.)) (unit *' 382., unit *' (1000. -. 475.)) (unit *' 382., unit *' (1000. -. 520.))
+        |> bezier-to (unit *' 382., unit *' (1000. -. 550.)) (unit *' 367., unit *' (1000. -. 585.)) (unit *' 340., unit *' (1000. -. 607.))
+        |> bezier-to (unit *' 308., unit *' (1000. -. 633.)) (unit *' 283., unit *' (1000. -. 635.)) (unit *' 247., unit *' (1000. -. 637.))
+        |> bezier-to (unit *' 190., unit *' (1000. -. 641.)) (unit *' 175., unit *' (1000. -. 641.)) (unit *' 175., unit *' (1000. -. 670.))
+        |> bezier-to (unit *' 175., unit *' (1000. -. 701.)) (unit *' 199., unit *' (1000. -. 701.)) (unit *' 215., unit *' (1000. -. 701.))
+        |> line-to (unit *' 261., unit *' (1000. -. 701.))
+        |> bezier-to (unit *' 360., unit *' (1000. -. 701.)) (unit *' 411., unit *' (1000. -. 768.)) (unit *' 411., unit *' (1000. -. 826.))
+        |> bezier-to (unit *' 411., unit *' (1000. -. 887.)) (unit *' 355., unit *' (1000. -. 950.)) (unit *' 264., unit *' (1000. -. 950.))
+        |> bezier-to (unit *' 224., unit *' (1000. -. 950.)) (unit *' 147., unit *' (1000. -. 939.)) (unit *' 121., unit *' (1000. -. 892.))
+        |> bezier-to (unit *' 126., unit *' (1000. -. 887.)) (unit *' 133., unit *' (1000. -. 881.)) (unit *' 133., unit *' (1000. -. 861.))
+        |> bezier-to (unit *' 133., unit *' (1000. -. 837.)) (unit *' 114., unit *' (1000. -. 817.)) (unit *' 89., unit *' (1000. -. 817.))
+        |> bezier-to (unit *' 66., unit *' (1000. -. 817.)) (unit *' 44., unit *' (1000. -. 832.)) (unit *' 44., unit *' (1000. -. 864.))
+        |> bezier-to (unit *' 44., unit *' (1000. -. 953.)) (unit *' 141., unit *' (1000. -. 1011.)) (unit *' 264., unit *' (1000. -. 1011.))
+        |> bezier-to (unit *' 395., unit *' (1000. -. 1011.)) (unit *' 480., unit *' (1000. -. 919.)) (unit *' 480., unit *' (1000. -. 826.))
+        |> close-with-line;
+      ];
+      [ % 4
+        start-path (unit *' 495., unit *' (1000. -. 801.))
+        |> bezier-to (unit *' 495., unit *' (1000. -. 770.)) (unit *' 471., unit *' (1000. -. 770.)) (unit *' 455., unit *' (1000. -. 770.))
+        |> line-to (unit *' 377., unit *' (1000. -. 770.))
+        |> line-to (unit *' 377., unit *' (1000. -. 418.))
+        |> bezier-to (unit *' 377., unit *' (1000. -. 385.)) (unit *' 370., unit *' (1000. -. 377.)) (unit *' 336., unit *' (1000. -. 377.))
+        |> line-to (unit *' 308., unit *' (1000. -. 377.))
+        |> bezier-to (unit *' 284., unit *' (1000. -. 377.)) (unit *' 279., unit *' (1000. -. 378.)) (unit *' 266., unit *' (1000. -. 398.))
+        |> line-to (unit *' 38., unit *' (1000. -. 756.))
+        |> bezier-to (unit *' 29., unit *' (1000. -. 769.)) (unit *' 29., unit *' (1000. -. 771.)) (unit *' 29., unit *' (1000. -. 791.))
+        |> bezier-to (unit *' 29., unit *' (1000. -. 824.)) (unit *' 38., unit *' (1000. -. 831.)) (unit *' 69., unit *' (1000. -. 831.))
+        |> line-to (unit *' 321., unit *' (1000. -. 831.))
+        |> line-to (unit *' 321., unit *' (1000. -. 939.))
+        |> line-to (unit *' 259., unit *' (1000. -. 939.))
+        |> bezier-to (unit *' 243., unit *' (1000. -. 939.)) (unit *' 219., unit *' (1000. -. 939.)) (unit *' 219., unit *' (1000. -. 970.))
+        |> bezier-to (unit *' 219., unit *' (1000. -. 1000.)) (unit *' 244., unit *' (1000. -. 1000.)) (unit *' 259., unit *' (1000. -. 1000.))
+        |> line-to (unit *' 439., unit *' (1000. -. 1000.))
+        |> bezier-to (unit *' 454., unit *' (1000. -. 1000.)) (unit *' 479., unit *' (1000. -. 1000.)) (unit *' 479., unit *' (1000. -. 970.))
+        |> bezier-to (unit *' 479., unit *' (1000. -. 939.)) (unit *' 455., unit *' (1000. -. 939.)) (unit *' 439., unit *' (1000. -. 939.))
+        |> line-to (unit *' 377., unit *' (1000. -. 939.))
+        |> line-to (unit *' 377., unit *' (1000. -. 831.))
+        |> line-to (unit *' 455., unit *' (1000. -. 831.))
+        |> bezier-to (unit *' 470., unit *' (1000. -. 831.)) (unit *' 495., unit *' (1000. -. 831.)) (unit *' 495., unit *' (1000. -. 801.))
+        |> close-with-line;
+        start-path (unit *' 321., unit *' (1000. -. 770.))
+        |> line-to (unit *' 99., unit *' (1000. -. 770.))
+        |> line-to (unit *' 321., unit *' (1000. -. 421.))
+        |> close-with-line;
+      ];
+      [ % 5
+        start-path (unit *' 472., unit *' (1000. -. 810.))
+        |> bezier-to (unit *' 472., unit *' (1000. -. 709.)) (unit *' 395., unit *' (1000. -. 611.)) (unit *' 277., unit *' (1000. -. 611.))
+        |> bezier-to (unit *' 242., unit *' (1000. -. 611.)) (unit *' 198., unit *' (1000. -. 618.)) (unit *' 157., unit *' (1000. -. 640.))
+        |> line-to (unit *' 157., unit *' (1000. -. 450.))
+        |> line-to (unit *' 397., unit *' (1000. -. 450.))
+        |> bezier-to (unit *' 412., unit *' (1000. -. 450.)) (unit *' 437., unit *' (1000. -. 450.)) (unit *' 437., unit *' (1000. -. 420.))
+        |> bezier-to (unit *' 437., unit *' (1000. -. 389.)) (unit *' 413., unit *' (1000. -. 389.)) (unit *' 397., unit *' (1000. -. 389.))
+        |> line-to (unit *' 128., unit *' (1000. -. 389.))
+        |> bezier-to (unit *' 95., unit *' (1000. -. 389.)) (unit *' 88., unit *' (1000. -. 398.)) (unit *' 88., unit *' (1000. -. 430.))
+        |> line-to (unit *' 88., unit *' (1000. -. 696.))
+        |> bezier-to (unit *' 88., unit *' (1000. -. 714.)) (unit *' 88., unit *' (1000. -. 737.)) (unit *' 120., unit *' (1000. -. 737.))
+        |> bezier-to (unit *' 138., unit *' (1000. -. 737.)) (unit *' 142., unit *' (1000. -. 732.)) (unit *' 150., unit *' (1000. -. 722.))
+        |> bezier-to (unit *' 177., unit *' (1000. -. 690.)) (unit *' 218., unit *' (1000. -. 672.)) (unit *' 276., unit *' (1000. -. 672.))
+        |> bezier-to (unit *' 358., unit *' (1000. -. 672.)) (unit *' 403., unit *' (1000. -. 745.)) (unit *' 403., unit *' (1000. -. 810.))
+        |> bezier-to (unit *' 403., unit *' (1000. -. 890.)) (unit *' 332., unit *' (1000. -. 950.)) (unit *' 248., unit *' (1000. -. 950.))
+        |> bezier-to (unit *' 220., unit *' (1000. -. 950.)) (unit *' 156., unit *' (1000. -. 942.)) (unit *' 128., unit *' (1000. -. 887.))
+        |> bezier-to (unit *' 133., unit *' (1000. -. 882.)) (unit *' 141., unit *' (1000. -. 875.)) (unit *' 141., unit *' (1000. -. 855.))
+        |> bezier-to (unit *' 141., unit *' (1000. -. 826.)) (unit *' 118., unit *' (1000. -. 810.)) (unit *' 97., unit *' (1000. -. 810.))
+        |> bezier-to (unit *' 82., unit *' (1000. -. 810.)) (unit *' 52., unit *' (1000. -. 819.)) (unit *' 52., unit *' (1000. -. 858.))
+        |> bezier-to (unit *' 52., unit *' (1000. -. 941.)) (unit *' 136., unit *' (1000. -. 1011.)) (unit *' 248., unit *' (1000. -. 1011.))
+        |> bezier-to (unit *' 373., unit *' (1000. -. 1011.)) (unit *' 472., unit *' (1000. -. 921.)) (unit *' 472., unit *' (1000. -. 810.))
+        |> close-with-line;
+      ];
+      [ % 6
+        start-path (unit *' 471., unit *' (1000. -. 807.))
+        |> bezier-to (unit *' 471., unit *' (1000. -. 693.)) (unit *' 383., unit *' (1000. -. 604.)) (unit *' 273., unit *' (1000. -. 604.))
+        |> bezier-to (unit *' 221., unit *' (1000. -. 604.)) (unit *' 169., unit *' (1000. -. 621.)) (unit *' 124., unit *' (1000. -. 662.))
+        |> bezier-to (unit *' 138., unit *' (1000. -. 521.)) (unit *' 232., unit *' (1000. -. 439.)) (unit *' 320., unit *' (1000. -. 439.))
+        |> bezier-to (unit *' 354., unit *' (1000. -. 439.)) (unit *' 370., unit *' (1000. -. 450.)) (unit *' 375., unit *' (1000. -. 455.))
+        |> bezier-to (unit *' 370., unit *' (1000. -. 460.)) (unit *' 365., unit *' (1000. -. 466.)) (unit *' 365., unit *' (1000. -. 484.))
+        |> bezier-to (unit *' 365., unit *' (1000. -. 508.)) (unit *' 383., unit *' (1000. -. 528.)) (unit *' 409., unit *' (1000. -. 528.))
+        |> bezier-to (unit *' 434., unit *' (1000. -. 528.)) (unit *' 454., unit *' (1000. -. 511.)) (unit *' 454., unit *' (1000. -. 481.))
+        |> bezier-to (unit *' 454., unit *' (1000. -. 432.)) (unit *' 418., unit *' (1000. -. 378.)) (unit *' 321., unit *' (1000. -. 378.))
+        |> bezier-to (unit *' 187., unit *' (1000. -. 378.)) (unit *' 53., unit *' (1000. -. 499.)) (unit *' 53., unit *' (1000. -. 701.))
+        |> bezier-to (unit *' 53., unit *' (1000. -. 938.)) (unit *' 165., unit *' (1000. -. 1011.)) (unit *' 264., unit *' (1000. -. 1011.))
+        |> bezier-to (unit *' 373., unit *' (1000. -. 1011.)) (unit *' 471., unit *' (1000. -. 927.)) (unit *' 471., unit *' (1000. -. 807.))
+        |> close-with-line;
+        start-path (unit *' 402., unit *' (1000. -. 807.))
+        |> bezier-to (unit *' 402., unit *' (1000. -. 893.)) (unit *' 336., unit *' (1000. -. 950.)) (unit *' 264., unit *' (1000. -. 950.))
+        |> bezier-to (unit *' 199., unit *' (1000. -. 950.)) (unit *' 160., unit *' (1000. -. 901.)) (unit *' 140., unit *' (1000. -. 840.))
+        |> bezier-to (unit *' 130., unit *' (1000. -. 816.)) (unit *' 132., unit *' (1000. -. 792.)) (unit *' 132., unit *' (1000. -. 778.))
+        |> bezier-to (unit *' 132., unit *' (1000. -. 716.)) (unit *' 192., unit *' (1000. -. 666.)) (unit *' 268., unit *' (1000. -. 666.))
+        |> bezier-to (unit *' 349., unit *' (1000. -. 666.)) (unit *' 402., unit *' (1000. -. 733.)) (unit *' 402., unit *' (1000. -. 807.))
+        |> close-with-line;
+      ];
+      [ % 7
+        start-path (unit *' 480., unit *' (1000. -. 420.))
+        |> bezier-to (unit *' 480., unit *' (1000. -. 389.)) (unit *' 456., unit *' (1000. -. 389.)) (unit *' 440., unit *' (1000. -. 389.))
+        |> line-to (unit *' 110., unit *' (1000. -. 389.))
+        |> bezier-to (unit *' 104., unit *' (1000. -. 373.)) (unit *' 86., unit *' (1000. -. 373.)) (unit *' 78., unit *' (1000. -. 373.))
+        |> bezier-to (unit *' 44., unit *' (1000. -. 373.)) (unit *' 44., unit *' (1000. -. 395.)) (unit *' 44., unit *' (1000. -. 414.))
+        |> line-to (unit *' 44., unit *' (1000. -. 456.))
+        |> bezier-to (unit *' 44., unit *' (1000. -. 475.)) (unit *' 44., unit *' (1000. -. 497.)) (unit *' 78., unit *' (1000. -. 497.))
+        |> bezier-to (unit *' 113., unit *' (1000. -. 497.)) (unit *' 113., unit *' (1000. -. 478.)) (unit *' 113., unit *' (1000. -. 450.))
+        |> line-to (unit *' 377., unit *' (1000. -. 450.))
+        |> bezier-to (unit *' 204., unit *' (1000. -. 634.)) (unit *' 170., unit *' (1000. -. 854.)) (unit *' 170., unit *' (1000. -. 964.))
+        |> bezier-to (unit *' 170., unit *' (1000. -. 978.)) (unit *' 170., unit *' (1000. -. 1011.)) (unit *' 205., unit *' (1000. -. 1011.))
+        |> bezier-to (unit *' 222., unit *' (1000. -. 1011.)) (unit *' 239., unit *' (1000. -. 1000.)) (unit *' 239., unit *' (1000. -. 971.))
+        |> bezier-to (unit *' 244., unit *' (1000. -. 687.)) (unit *' 397., unit *' (1000. -. 513.)) (unit *' 458., unit *' (1000. -. 454.))
+        |> bezier-to (unit *' 478., unit *' (1000. -. 436.)) (unit *' 480., unit *' (1000. -. 434.)) (unit *' 480., unit *' (1000. -. 420.))
+        |> close-with-line;
+      ];
+      [ % 8
+        start-path (unit *' 480., unit *' (1000. -. 826.))
+        |> bezier-to (unit *' 480., unit *' (1000. -. 751.)) (unit *' 415., unit *' (1000. -. 692.)) (unit *' 341., unit *' (1000. -. 671.))
+        |> bezier-to (unit *' 421., unit *' (1000. -. 644.)) (unit *' 466., unit *' (1000. -. 595.)) (unit *' 466., unit *' (1000. -. 538.))
+        |> bezier-to (unit *' 466., unit *' (1000. -. 456.)) (unit *' 381., unit *' (1000. -. 378.)) (unit *' 262., unit *' (1000. -. 378.))
+        |> bezier-to (unit *' 142., unit *' (1000. -. 378.)) (unit *' 58., unit *' (1000. -. 457.)) (unit *' 58., unit *' (1000. -. 538.))
+        |> bezier-to (unit *' 58., unit *' (1000. -. 595.)) (unit *' 104., unit *' (1000. -. 645.)) (unit *' 183., unit *' (1000. -. 671.))
+        |> bezier-to (unit *' 108., unit *' (1000. -. 692.)) (unit *' 44., unit *' (1000. -. 751.)) (unit *' 44., unit *' (1000. -. 826.))
+        |> bezier-to (unit *' 44., unit *' (1000. -. 923.)) (unit *' 137., unit *' (1000. -. 1011.)) (unit *' 262., unit *' (1000. -. 1011.))
+        |> bezier-to (unit *' 388., unit *' (1000. -. 1011.)) (unit *' 480., unit *' (1000. -. 923.)) (unit *' 480., unit *' (1000. -. 826.))
+        |> close-with-line;
+        start-path (unit *' 397., unit *' (1000. -. 539.))
+        |> bezier-to (unit *' 397., unit *' (1000. -. 596.)) (unit *' 335., unit *' (1000. -. 640.)) (unit *' 262., unit *' (1000. -. 640.))
+        |> bezier-to (unit *' 189., unit *' (1000. -. 640.)) (unit *' 127., unit *' (1000. -. 595.)) (unit *' 127., unit *' (1000. -. 539.))
+        |> bezier-to (unit *' 127., unit *' (1000. -. 487.)) (unit *' 183., unit *' (1000. -. 439.)) (unit *' 262., unit *' (1000. -. 439.))
+        |> bezier-to (unit *' 340., unit *' (1000. -. 439.)) (unit *' 397., unit *' (1000. -. 487.)) (unit *' 397., unit *' (1000. -. 539.))
+        |> close-with-line;
+        start-path (unit *' 411., unit *' (1000. -. 825.))
+        |> bezier-to (unit *' 411., unit *' (1000. -. 894.)) (unit *' 345., unit *' (1000. -. 950.)) (unit *' 262., unit *' (1000. -. 950.))
+        |> bezier-to (unit *' 179., unit *' (1000. -. 950.)) (unit *' 113., unit *' (1000. -. 894.)) (unit *' 113., unit *' (1000. -. 825.))
+        |> bezier-to (unit *' 113., unit *' (1000. -. 764.)) (unit *' 171., unit *' (1000. -. 701.)) (unit *' 262., unit *' (1000. -. 701.))
+        |> bezier-to (unit *' 354., unit *' (1000. -. 701.)) (unit *' 411., unit *' (1000. -. 764.)) (unit *' 411., unit *' (1000. -. 825.))
+        |> close-with-line;
+      ];
+      [ % 9
+        start-path (unit *' 471., unit *' (1000. -. 688.))
+        |> bezier-to (unit *' 471., unit *' (1000. -. 447.)) (unit *' 360., unit *' (1000. -. 378.)) (unit *' 265., unit *' (1000. -. 378.))
+        |> bezier-to (unit *' 154., unit *' (1000. -. 378.)) (unit *' 53., unit *' (1000. -. 461.)) (unit *' 53., unit *' (1000. -. 582.))
+        |> bezier-to (unit *' 53., unit *' (1000. -. 696.)) (unit *' 141., unit *' (1000. -. 785.)) (unit *' 251., unit *' (1000. -. 785.))
+        |> bezier-to (unit *' 303., unit *' (1000. -. 785.)) (unit *' 355., unit *' (1000. -. 768.)) (unit *' 400., unit *' (1000. -. 727.))
+        |> bezier-to (unit *' 390., unit *' (1000. -. 851.)) (unit *' 312., unit *' (1000. -. 950.)) (unit *' 216., unit *' (1000. -. 950.))
+        |> bezier-to (unit *' 207., unit *' (1000. -. 950.)) (unit *' 171., unit *' (1000. -. 949.)) (unit *' 150., unit *' (1000. -. 933.))
+        |> bezier-to (unit *' 154., unit *' (1000. -. 928.)) (unit *' 159., unit *' (1000. -. 922.)) (unit *' 159., unit *' (1000. -. 905.))
+        |> bezier-to (unit *' 159., unit *' (1000. -. 881.)) (unit *' 141., unit *' (1000. -. 861.)) (unit *' 115., unit *' (1000. -. 861.))
+        |> bezier-to (unit *' 90., unit *' (1000. -. 861.)) (unit *' 70., unit *' (1000. -. 878.)) (unit *' 70., unit *' (1000. -. 908.))
+        |> bezier-to (unit *' 70., unit *' (1000. -. 940.)) (unit *' 88., unit *' (1000. -. 1011.)) (unit *' 216., unit *' (1000. -. 1011.))
+        |> bezier-to (unit *' 348., unit *' (1000. -. 1011.)) (unit *' 471., unit *' (1000. -. 886.)) (unit *' 471., unit *' (1000. -. 688.))
+        |> close-with-line;
+        start-path (unit *' 393., unit *' (1000. -. 611.))
+        |> bezier-to (unit *' 393., unit *' (1000. -. 666.)) (unit *' 339., unit *' (1000. -. 723.)) (unit *' 256., unit *' (1000. -. 723.))
+        |> bezier-to (unit *' 175., unit *' (1000. -. 723.)) (unit *' 122., unit *' (1000. -. 656.)) (unit *' 122., unit *' (1000. -. 582.))
+        |> bezier-to (unit *' 122., unit *' (1000. -. 495.)) (unit *' 193., unit *' (1000. -. 439.)) (unit *' 265., unit *' (1000. -. 439.))
+        |> bezier-to (unit *' 308., unit *' (1000. -. 439.)) (unit *' 336., unit *' (1000. -. 462.)) (unit *' 352., unit *' (1000. -. 482.))
+        |> bezier-to (unit *' 384., unit *' (1000. -. 521.)) (unit *' 393., unit *' (1000. -. 540.)) (unit *' 393., unit *' (1000. -. 611.))
+        |> close-with-line;
+      ];
+    ]
+
+  let number-to-digits number =
+    let-rec aux num lst =
+      if num < 10 then
+        num :: lst
+      else
+        aux (num / 10) ((num mod 10) :: lst)
+    in
+    aux number []
+
+  let digits-to-graphics color size digits =
+    let aux count list number =
+      match List.nth number (graphics-list size) with
+      | Some(p) ->
+        p
+        |> merge-path
+        |> fill color
+        |> shift-graphics ((size *' 0.525) *' (float count), 0pt)
+        |> (fun g -> g :: list)
+      | None ->
+        `This can't happen!` |> abort-with-message
+    in
+    digits
+    |> List.fold-lefti aux []
+
+  let get-number-graphics color size number =
+    number-to-digits number
+    |> digits-to-graphics color size
+  let get-number-inline color size number =
+    let digits = number-to-digits number in
+    inline-graphics ((size *' 0.525) *' (List.length digits |> float)) (size *' 0.622) (size *' 0.11) (fun point -> (
+      get-number-graphics color size number
+      |> List.map (shift-graphics point)
+    ))
+    |> script-guard Latin
+
+end
+
+%% EOF

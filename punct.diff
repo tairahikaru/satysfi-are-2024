@@ -1,0 +1,175 @@
+diff --git a/src/chardecoder/charBasis.ml b/src/chardecoder/charBasis.ml
+index 93a4ce75..fac9b54d 100644
+--- a/src/chardecoder/charBasis.ml
++++ b/src/chardecoder/charBasis.ml
+@@ -122,10 +122,11 @@ type line_break_class =
+   | JLCM  (* JLreq cl-07; touten (fullwidth commas) *)
+   | JLPL  (* JLreq cl-10; prolonged sound mark *)
+   | JLSM  (* JLreq cl-11; small kanas *)
++  | JLIS  (* JLreq cl-14; fullwidth ideographic space *)
+ 
+ 
+ let is_ideographic_class = function
+-  | CJ | ID | JLOP | JLCP | JLHY | JLNS | JLMD | JLFS | JLCM | JLPL | JLSM
++  | CJ | ID | JLOP | JLCP | JLHY | JLNS | JLMD | JLFS | JLCM | JLPL | JLSM | JLIS
+       -> true
+   | _ -> false
+ 
+@@ -222,6 +223,7 @@ let show_lb_class lbc =
+   | JLCM -> "JLCM!"
+   | JLPL -> "JLPL!"
+   | JLSM -> "JLSM!"
++  | JLIS -> "JLIS!"
+ 
+ 
+ (* for debug *)
+diff --git a/src/chardecoder/convertText.ml b/src/chardecoder/convertText.ml
+index 2e982311..d8890a90 100644
+--- a/src/chardecoder/convertText.ml
++++ b/src/chardecoder/convertText.ml
+@@ -91,6 +91,24 @@ let pure_halfwidth_space_hard fontsize : lb_pure_box =
+     LBAtom((widinfo, Length.zero, Length.zero), EvHorzEmpty)
+ 
+ 
++(* -- 'pure_quarterwidth_space_soft': inserts a shrinkable CJK quarterwidth space -- *)
++let pure_quarterwidth_space_soft fontsize : lb_pure_box =
++  let widinfo = make_width_info (fontsize *% 0.25) (fontsize *% 0.125) (fontsize *% 0.125) in
++    LBAtom((widinfo, Length.zero, Length.zero), EvHorzEmpty)
++
++
++(* -- 'pure_quarterwidth_space_hard': inserts a non-shrinkable CJK quarterwidth space -- *)
++let pure_quarterwidth_space_hard fontsize : lb_pure_box =
++  let widinfo = make_width_info (fontsize *% 0.25) Length.zero (fontsize *% 0.125) in
++    LBAtom((widinfo, Length.zero, Length.zero), EvHorzEmpty)
++
++
++(* -- 'pure_specialwidth_space': inserts a special space -- *)
++let pure_specialwidth_space natural_width shrink_width stretch_width : lb_pure_box =
++  let widinfo = make_width_info natural_width shrink_width stretch_width in
++    LBAtom((widinfo, Length.zero, Length.zero), EvHorzEmpty)
++
++
+ (* -- 'pure_fullwidth_space': inserts a shrinkable CJK fullwidth space -- *)
+ let pure_fullwidth_space fontsize : lb_pure_box =
+   let widinfo = make_width_info fontsize (fontsize *% 0.5) (fontsize *% 0.5) in
+@@ -106,6 +124,12 @@ let adjacent_space ctx1 ctx2 =
+     LBAtom((widinfo, Length.zero, Length.zero), EvHorzEmpty)
+ 
+ 
++(*  -- 'fullwidth_kern': inserts a solid backward fullwidth kern for CJK characters -- *)
++let fullwidth_kern ctx script : lb_box =
++  let size = get_corrected_font_size ctx script in
++    LBPure(LBAtom((natural size, Length.zero, Length.zero), EvHorzEmpty))
++
++
+ (*  -- 'halfwidth_kern': inserts a solid backward halfwidth kern for CJK characters -- *)
+ let halfwidth_kern ctx script : lb_box =
+   let size = get_corrected_font_size ctx script in
+@@ -197,19 +221,47 @@ let pure_space_between_classes (ctx1, script1, lbc1) (ctx2, script2, lbc2) =
+   let sizeM = Length.max size1 size2 in
+   let hwhard1 = (pure_halfwidth_space_hard size1) in
+   let hwsoft1 = (pure_halfwidth_space_soft size1) in
++  let qwsoft1 = (pure_quarterwidth_space_soft size1) in
+   let hwsoft2 = (pure_halfwidth_space_soft size2) in
++  let qwsoft2 = (pure_quarterwidth_space_soft size2) in
+   let hwsoftM = (pure_halfwidth_space_soft sizeM) in
+   let hwhardM = (pure_halfwidth_space_hard sizeM) in
++  let twsoftW =
++    let sizeW = size1 *% 0.5 +% size2 *% 0.25 in
++      (pure_specialwidth_space (sizeW) (sizeW *% 0.5) (sizeW *% 0.5)) in
++  let twhardW =
++    let sizeW = size1 *% 0.5 +% size2 *% 0.25 in
++      (pure_specialwidth_space (sizeW) (size2 *% 0.25) (sizeW *% 0.5)) in
++  let hwsoftW =
++    let sizeW = size1 *% 0.25 +% size2 *% 0.25 in
++      (pure_specialwidth_space (sizeW) (sizeW *% 0.5) (sizeW *% 0.5)) in
+   match (lbc1, lbc2) with
++  | (JLOP, JLOP) -> None
+   | (JLCP, JLOP) -> Some(hwsoftM)
+   | (JLCM, JLOP) -> Some(hwsoftM)
+   | (JLFS, JLOP) -> Some(hwhardM)
++  | (JLMD, JLOP) -> Some(qwsoft1)
++  | (JLIS, JLOP) -> None
+   | (_   , JLOP) -> Some(hwsoft2)
+   | (JLCP, JLCM) -> None
+   | (JLCP, JLFS) -> None
++  | (JLCP, JLCP) -> None
++  | (JLCP, JLMD) -> Some(qwsoft2)
++  | (JLCP, JLIS) -> None
+   | (JLCP, _   ) -> Some(hwsoft1)
++  | (JLCM, JLCP) -> None
++  | (JLCM, JLCM) -> None
++  | (JLCM, JLFS) -> None
++  | (JLCM, JLMD) -> Some(twsoftW)
+   | (JLCM, _   ) -> Some(hwsoft1)
++  | (JLFS, JLCP) -> None
++  | (JLFS, JLCM) -> None
++  | (JLFS, JLFS) -> None
++  | (JLFS, JLMD) -> Some(twhardW)
+   | (JLFS, _   ) -> Some(hwhard1)
++  | (JLMD, JLMD) -> Some(hwsoftW)
++  | (JLMD, _   ) -> Some(qwsoft1)
++  | (_   , JLMD) -> Some(qwsoft2)
+       (* TEMPORARY; SHOULD WRITE MORE based on JLreq *)
+ (*
+   | (JLNonstarter(_, _), PreWord(_, _, _)) -> full_space
+@@ -268,6 +320,7 @@ let ideographic_single ctx script lbc uchlst =
+   let lphbraw = LBPure(inner_string_pure ctx script uchlst) in
+   let hwkern = halfwidth_kern ctx script in
+   let qwkern = quarterwidth_kern ctx script in
++  let fwkern = fullwidth_kern ctx script in
+     match lbc with
+     | JLCP  (* -- JLreq cl-02; fullwidth close punctuation -- *)
+     | JLFS  (* -- JLreq cl-06; kuten (fullwidth full stops) -- *)
+@@ -280,6 +333,9 @@ let ideographic_single ctx script lbc uchlst =
+     | JLMD  (* -- JLreq cl-05; nakaten (fullwidth middle dot, fullwidth semicolon, etc.) -- *)
+       -> [qwkern; lphbraw; qwkern]
+ 
++    | JLIS  (* -- JLreq cl-14; fullwidth ideographic space -- *)
++      -> [fwkern]
++
+     | _ -> [lphbraw]
+ 
+ 
+diff --git a/src/chardecoder/lineBreakDataMap.ml b/src/chardecoder/lineBreakDataMap.ml
+index 086eccaa..d60f699f 100644
+--- a/src/chardecoder/lineBreakDataMap.ml
++++ b/src/chardecoder/lineBreakDataMap.ml
+@@ -100,6 +100,10 @@ let line_break_class_overriding_list =
+     (0xFF5D, JLCP);  (* FULLWIDTH RIGHT CURLY BRACKET          *)
+     (0xFF5F, JLOP);  (* FULLWIDTH LEFT WHITE PARENTHESIS       *)
+     (0xFF60, JLCP);  (* FULLWIDTH RIGHT WHITE PARENTHESIS      *)
++    (0x30FB, JLMD);  (* FULLWIDTH KATAKANA MIDDLE DOT          *)
++    (0x003A, JLMD);  (* FULLWIDTH COLON                        *)
++    (0x003B, JLMD);  (* FULLWIDTH SEMICOLON                    *)
++    (0x3000, JLIS);  (* IDEOGRAPHIC SPACE                      *)
+   ]
+ 
+ 
+@@ -130,7 +134,7 @@ let notof lbclst = LBRENotOf(lbclst)
+ let exact lbc = set [lbc]
+ let star lbre = LBREStar(lbre)
+ let spaced = set [AL]
+-let nonspaced = set [ID; CJ; IN; SA; JLOP; JLCP; JLNS; JLMD; JLFS; JLCM; JLPL; JLSM]
++let nonspaced = set [ID; CJ; IN; SA; JLOP; JLCP; JLNS; JLMD; JLFS; JLCM; JLPL; JLSM; JLIS]
+   (* -- does NOT contain JLHY -- *)
+ 
+ 
+@@ -185,7 +189,7 @@ let line_break_rule : (break_opportunity rule) list =
+       ([exact QU; star [exact SP]], PreventBreak, [exact OP]);
+     (* -- LB16 -- *)
+     (* -- Original: ideographic nonstarters -- *)
+-      ([set [CL; CP]; star [exact SP]], PreventBreak, [set [NS; CJ; JLNS; JLPL]]);
++      ([set [CL; CP]; star [exact SP]], PreventBreak, [set [NS; CJ; JLNS; JLPL; JLMD]]);
+     (* -- LB17 -- *)
+       ([exact B2; star [exact SP]], PreventBreak, [exact B2]);
+     (* -- LB18 -- *)
+@@ -198,7 +202,7 @@ let line_break_rule : (break_opportunity rule) list =
+       ([exact CB], AllowBreak, []);
+     (* -- LB21 -- *)
+     (* -- Original: ideographic nonstarters -- *)
+-      ([], PreventBreak, [set [BA; HY; NS; CJ; JLNS; JLPL]]);
++      ([], PreventBreak, [set [BA; HY; NS; CJ; JLNS; JLPL; JLMD]]);
+       ([exact BB], PreventBreak, []);
+     (* -- LB21a -- *)
+       ([exact HL; set [HY; BA]], PreventBreak, []);

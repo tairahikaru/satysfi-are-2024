@@ -1,0 +1,557 @@
+%% satysfi-are.saty
+% https://github.com/tairahikaru/satysfi-are-2024
+@import: satysfi-are
+
+let repository = `https://github.com/tairahikaru/satysfi-are-2024`
+let-inline ctx \repository ?:itopt () =
+  let it =
+    match itopt with
+    | Some(it) -> it
+    | None -> {リポジトリ}
+  in
+  {\href(repository)(it);} |> read-inline ctx
+
+in
+
+Are.document (|
+  title = {\SATySFi;がアレ};
+  author = {\href(`https://github.com/tairahikaru`){tairahikaru}};
+  date = {2024-12-14（\SATySFi; Advent Calendar 2024に投稿するつもりだった\ellipsis;\ellipsis;）};
+|) '<
+  +p{
+    \href(`https://github.com/gfngfn/SATySFi`){\SATySFi;}は\href(`https://github.com/latex3/latex2e`){\LaTeX;}の代替となり得ることを目指して開発されている組版エンジンであるが、
+    新興のプロジェクトということもあり、
+    （日本語化された）\LaTeX;をはじめとするほかの組版エンジンと比べると満足できない点が多数ある。
+  }
+  +p{
+    この文書は、私が把握している限りのそういった
+    \SATySFi;を扱う際に注意する必要がある挙動をいくつかまとめたものである。
+  }
+  +p{
+    記載の内容は2024年12月13日時点のものであり、\SATySFi;バージョン0.0.11に基づいている。
+  }
+
+  +section {合字がアレ} <
+    +p{
+      合字（ligature）とは、たとえば「f」と「i」が連続したときにそのまま「\no-lig{fi}」
+      とすると文字同士が近づいて読みづらいので、「fi」のようなもとからくっついてデザインされた文字を使うが、その文字のことである。
+      \SATySFi;にも合字処理は実装されているのだが、\file{lmroman10-regular.otf}では「fi」の合字しか効いてなさそうである：
+    }
+    +example <
+      +np{
+        Affixed fifty diffuse floats afflict fillers.
+      }
+      +np{
+        Aﬃxed ﬁfty diﬀuse ﬂoats aﬄict ﬁllers.
+      }
+    >
+    +p{
+      上は\SATySFi;に何も考えずにアルファベットをそのまま流し込んだもの、
+      下は合字に対応するUnicodeの文字を直接ソースコードに書いたものである。
+      Junicodeだとこの問題は起こらないので、\file{lmroman10-regular.otf}にも合字とその対応表は実装されているはずだが、フォントによっては正常なようだ：
+    }
+    +example < +renew-ctx (set-font Latin (`Junicode`, 1.14, 0.)) <
+      +np{
+        Affixed fifty diffuse floats afflict fillers.
+      }
+      +np{
+        \no-lig{Affixed fifty diffuse floats afflict fillers.}
+      }
+    >>
+    +p{
+      下はわざわざ合字処理を抑制したもの。
+    }
+    +p{
+      どうやら、\file{lmroman10-regular.otf}は「f」の文字に対応するリガチャの対応表を複数に分けて保持しているが、このうち\emph{最後の対応表だけが参照されてしまう}ようだ。
+      これは\command?:(`https://github.com/gfngfn/otfed`){otfedcli}で確認できる。リスト\ref(`list:otfed`);を参照。
+      \code-float?:(`list:otfed`)({
+          以下の結果において、55は\code{f}、66は\code{i}、72は\code{l}のグリフをそれぞれ表す。1行目はコマンドプロンプトの入力。
+      })(```
+        $ otfedcli ~/.satysfi/dist/fonts/lmroman10-regular.otf gsub DFLT DFLT liga
+        GSUB (script: DFLT, langsys: DFLT, feature: liga)
+          - lig: 55 -->
+            * {55, 72} --> 124
+            * {55} --> 122
+            * {72} --> 126
+          - lig: 55 -->
+            * {66} --> 125
+          - lig: 122 -->
+            * {66} --> 123
+      ```);
+    }
+  >
+
+  +section {段落がアレ} <
+    +subsection ?:(`sec:margin`){マージンがアレ} <
+      +p {
+        \SATySFi;において、段落間の空白はマージン（margin）という概念に基づいて定まる。
+        \code{set-paragraph-margin}というプリミティヴによって段落の前後のマージンを設定でき、
+        隣り合った段落間の空白は、
+        \listing{
+          * 前の段落の後ろ側のマージン
+          * 後の段落の前側のマージン
+        }%
+        のうち、小さくない方になる。
+      }
+      +p {
+        さて、ここまで「段落間の空白」という用語により説明してきたが、
+        この\emph{「段落間の空白」とは何を意味するのだろうか}。
+        たとえば、（和文の）フォントサイズが\unit{10.0}{pt}、
+        行送りが\unit{17.5}{pt}のとき（この文書ではそうなっている）、段落間か段落内かによらず、
+        行を一定の間隔で配置するにはどうすればよいだろうか。
+        行送りとは、前の行のベースラインから次の行のベースラインまでの長さのことである。
+        したがって、
+        ${\unitm!{17.5}!{pt} - \unitm!{10.0}!{pt} = \unitm!{7.5}!{pt}}%
+        であるので、直感的にはマージンを\unit{7.5}{pt}に設定すればよさそうである。
+        では試してみよう：
+      }
+
+      +show-expl-grid-ctx@~(@`ex:margin`) ((fun ctx -> (
+        '<  +p{1段落目}+p{2段落目}+p{3段落目}
+            +p{4段落目}+p{5段落目}+p{6段落目}
+            +p{7段落目}+p{8段落目}+p{9段落目}>
+        |> read-block (ctx
+          |> set-font-size 10pt
+          |> set-leading 17.5pt |> set-font
+            HanIdeographic (`ipaexm`, 1., 0.)
+          |> set-font Kana (`ipaexm`, 1., 0.)
+          |> set-paragraph-margin 7.5pt 7.5pt)
+      )));
+      +p {
+        一見するとうまくいってそうだが、よくよく見てみると少しずつ期待されている配置（背景のグリッド）よりも上にずれていっている。
+        実は、
+        \align[
+          ${| | \textm!{段落1行目の高さ} + \textm!{段落最終行の深さ} |};
+          ${| | \neq \textm!{フォントサイズ} |};
+        ];%
+        である\exclamation;%
+        実際に確かめてみよう：
+      }
+
+      +show-expl-ctx@~(@` `) ((fun ctx -> (
+        let (w, h, d) = read-inline (ctx
+          |> set-font-size 10pt
+          |> set-leading 17.5pt |> set-font
+            HanIdeographic (`ipaexm`, 1., 0.)
+          |> set-font Kana (`ipaexm`, 1., 0.)
+          |> set-paragraph-margin 7.5pt 7.5pt
+        ) {漢} |> get-natural-metrics in
+        let emb l = (l /' 1pt |> show-float)
+          ^ #` pt, `# |> embed-string
+          |> read-inline ctx in
+        emb w ++ emb h ++ emb d ++ emb (h+'d)
+      ++ inline-fil |> line-break false true ctx)));
+    >
+
+    +draw-grid <
+      +p{
+        このように、「漢」という文字の幅は\show-width{漢}であるのに対し、幅と深さの合計は
+        \show-total-height{漢}として扱われるのである。
+        したがって、段落が切り替わるたびに実に\unit{\show-metric((fun w h d -> w -' h -' d)){漢}}{pt}ずつ
+        行送りがずれていくわけである。
+        もちろん、文字の高さは文字やフォントによって異なる。
+        そのため、段落の最後の行の「p」などの深さのある文字の有無によって、
+        \emph{段落間の\emph{行送りの}大きさが変わる}のである。
+      }
+
+      +p{
+        \TeX;では和文に関してはすべての文字で高さと深さが同じであるのが普通であるが、
+        \SATySFi;ではそうはなっていないようである。
+        実際、先に挙げた例での\code{\{漢\}}の部分を他の和文に変えると、その高さと深さも変わる。
+        句読点にすると特に顕著で、たとえば句点「。」にすると\eval-ctx((fun ctx -> (
+          let (w, h, d) = read-inline (ctx
+            |> set-font-size 10pt
+            |> set-leading 17.5pt |> set-font
+              HanIdeographic (`ipaexm`, 1., 0.)
+            |> set-font Kana (`ipaexm`, 1., 0.)
+            |> set-paragraph-margin 7.5pt 7.5pt
+          ) {。} |> get-natural-metrics in
+          let emb l = (l /' 1pt |> show-float)
+            ^ #` pt, `# |> embed-string
+            |> read-inline ctx in
+          emb w ++ emb h ++ emb d ++ emb (h+'d)
+        )));となる（なぜか幅もおかしい）。
+        おそらく、\emph{グリフの実際の高さと深さを参照している}ものと考えられる。
+        \SATySFi;を\code{--debug-show-bbox}つきで呼び出すと、\SATySFi;が把握しているフォントの実際の大きさを確認することができる。
+      }
+      +p{
+        もっとも、\ref?:({先の例})(`ex:margin`);だけだとグリッドの方がずれている可能性も否定できない。
+        そこで、少し前から本文にもグリッドを表示しているので、
+        \emph{段落内では行送りが乱れず、改段落のタイミングでちょうどずれが発生している}%
+        （そして次の段で戻る）
+        ということを確認していただきたい。
+        句読点に着目すると、グリッドからのずれがわかりやすいだろう。
+      }
+    >
+
+    +subsection {acsender/decsenderがアレ} <
+      +p{
+        \ref?:({前の節})(`sec:margin`);で、改段落のたびに行間が約\unit{1.0}{pt}ずつ狂うと述べた。
+        しかし、\ref?:({前の例})(`ex:margin`);を見ていただければわかるとおり、\unit{1.0}{pt}ずつずれているにしてはずれが少ない。
+        実際、マージンを前後ともに\unit{0.0}{pt}に設定しても、段落間の空白がゼロになるとは限らない：
+      }
+
+      +show-expl-ctx@~(@`ex:0ptmargin`) ((fun ctx -> (
+        '<  +p{1段落目}+p{2段落目}+p{3段落目}>
+        |> read-block (ctx
+          |> set-font-size 5pt
+          |> set-leading 15pt |> set-font
+            HanIdeographic (`ipaexm`, 1., 0.)
+          |> set-font Kana (`ipaexm`, 1., 0.)
+          |> set-paragraph-margin 0pt 0pt)
+      |> (fun bb -> (
+        '<+draw-grid <+eval(bb);>>
+        |> read-block (ctx |> set-font-size 5pt |> set-leading 15pt)
+      )))));
+
+      +p{
+        実は、\hspace-ratio(0. -. 0.50);
+        \code{set-min-paragraph-ascender-and-descender}というプリミティヴによって
+        段落前後の要素までの最小の距離を指定できる。
+        このプリミティヴはドキュメントには見あたらなかったが、\library?:(`https://github.com/nyuichi/satysfi-base`){base/context}には含まれていた。
+        名前から推測すると、\code{set-min-paragraph-ascender-and-descender \variable(${l_{1}}); \variable(${l_{2}});}\new-line;
+        によって
+        段落1行目の高さを\variable(${l_{1}});以上、最終行の深さを\variable(${l_{2}});以上とみなすのだろうが、
+        \variable(${l_{2}});の方は効いてなさそうである：
+      }
+
+      +renew-ctx (set-font-size 9.5pt) <
+        +show-expl-ctx@~(@` `) ((fun ctx -> (
+          '<  +p{1段落目}+p{2段落目}+p{3段落目}>
+          |> read-block (ctx |>
+          set-min-paragraph-ascender-and-descender
+                6pt 100pt |> set-font-size 5pt
+            |> set-leading 15pt |> set-font
+              HanIdeographic (`ipaexm`, 1., 0.)
+            |> set-font Kana (`ipaexm`, 1., 0.)
+            |> set-paragraph-margin 0pt 0pt)
+        |> (fun bb -> (
+          '<+draw-grid <+eval(bb);>>
+          |> read-block (ctx |> set-font-size 5pt |> set-leading 15pt)
+        )))));
+      >
+
+      +p{
+        \ref?:({前の例})(`ex:0ptmargin`);でマージンを\unit{0.0}{pt}に設定したにもかかわらず実際には空白が生じたのは、
+        このプリミティヴによる設定のデフォルトが\unit{9.0}{pt}/\unit{3.0}{pt}だからである。
+        実際にこの値を\unit{0.0}{pt}に設定すれば予想通りにずれることが確認できる：
+      }
+
+      +renew-ctx (set-font-size 9.5pt) <
+        +show-expl-ctx-option@~(@` `) ((ShowExplCmd.show-expl-to-bb (fun ctx -> ctx |> set-font-size 10pt |> AreGrid.show-expl-block-merge-grid))) ((fun ctx -> (
+          '<  +p{1段落目}+p{2段落目}+p{3段落目}
+              +p{4段落目}+p{5段落目}+p{6段落目}
+              +p{7段落目}+p{8段落目}+p{9段落目}>
+          |> read-block (ctx |>
+          set-min-paragraph-ascender-and-descender
+              0pt 0pt |> set-font-size 10pt
+            |> set-leading 17.5pt |> set-font
+              HanIdeographic (`ipaexm`, 1., 0.)
+            |> set-font Kana (`ipaexm`, 1., 0.)
+            |> set-paragraph-margin 7.5pt 7.5pt)
+        )));
+      >
+
+      +vspace(0pt);
+      +p{
+        \ref-page(`ex:margin`);ページの例と比較していただければ違いが鮮明だろう。
+        なお、件のプリミティヴ名が長すぎたのでコードのフォントサイズを小さくしてあるが、
+        出力例のフォントサイズは変更していない。
+      }
+    >
+
+    +subsection {ページ始めがアレ} <
+      +p{
+        ここで、ページ分割などを行う\code{page-break}などのプリミティヴで、ページ中における本文の配置位置を指定するために
+        (\|page-number : int\|) → (\|text-height : length\; text-origin : point\|)%
+        という型の関数を使うということを思い出していただきたい。
+        賢明なる読者の方にはすでにこれから私が述べようとしていることがわかっていると思うが、
+        このtext-originの指定は何を意味するのだろうか。
+        仕様によれば、「本文を配置するときの左上の座標」とのことであるが、この「本文の左上」
+        というのはどうやら\emph{「本文の1行目の中で1番高い要素」を基準としている}ようなのである。
+        これは、\emph{本文1行目にある要素の高さによって、1行目のベースラインの位置が変動し得る}ということを意味する。
+      }
+      +p{
+        普通の文字より高い要素がある場合にベースラインが下がるのは版面を守るために必要であるが、問題は
+        1行目の文章が普通の文字より高さが低い要素のみで構成されていた場合である。
+        普通に文章を書いていればそんなことにはならないだろうと思うかもしれないが、
+        実際に\SATySFi;の用語のうち高くない文字のみから構成されたものにはたとえば次のようなものがある：
+      }
+      +listing{
+        * page
+        * regexp
+      }
+      +p{
+        \draw-grid-this-page;%
+        さて、この段の1行目と隣の段の1行目を比較していただきたい。
+        実際にずれていることがわかるだろう。
+        このように、1行目の要素の高さによってベースラインの高さも変わるというのは、少々奇妙である。
+      }
+      +p{
+        このとき\code{set-min-paragraph-ascender-and-descender}は特に意味がないようである。
+      }
+      +p{
+        同様の問題はページ末尾でも起こり、最終行にpなどの深さがある要素が来た場合にその行が入り切らず、次のページに送られてしまうようだ（\ref?:({右下})(`ex:last-line`);参照）。
+      }
+    >
+  >
+
+  +section {行分割がアレ} <
+    +subsection {和文間がアレ} <
+      +renew-ctx(set-adjacent-stretch-ratio 0.025) <
+        +p{
+          \SATySFi;では\emph{普通に文章を書いているだけなのに
+          Overfull/Underfullがやけに多い}ように感じる。
+          その原因の1つは和文間の空白の伸び縮み量にあるようだ。
+        }
+        +p{
+          \code{set-adjacent-stretch-ratio}という名前のドキュメントにも\library?:(`https://github.com/nyuichi/satysfi-base`){base}にもない
+          プリミティヴがあり、フォントサイズに対する和文間の空白の伸び量が指定できる。
+          なお、\code{set-space-ratio-between-scripts}では反映されなかった。
+          この値はデフォルトで0.025になっている。
+          つまり、1文字追い出したければ40文字、禁則文字が連続していたりして2文字分追い出す必要があるときは80文字必要になるということだ
+          （これは正しくない。\ref?:({次節})(`ratio_stretch_limit`);を見よ）。
+          これは少々現実的ではなく、\emph{結果として約物間の空白を最大限利用して行長調整を行うこととなってしまう}。
+        }
+        +p{
+          これは、\LaTeX;の\class{jsclasses}では0.1になっているのとは大きな違いである。
+          この文書でもこの節以外では0.1に設定している。
+          この節で生じている全てのOverfullは問題の値を0.1にすれば解消することを確認済みである。
+        }
+      >
+    >
+
+    +subsection ?:(`sec:badness`){badnessがアレ} <
+      +vspace(-10pt);
+      +return-to-grid;
+      +draw-grid <
+        +p{
+          この段落を眺めて、何か気づくことはないだろうか。
+          一見すると気づかないかもしれないが、背景のグリッドと合わせて
+          注意深く観察していただきたい。
+        }
+      >
+      +p{
+        後ろから2行目に注目である。
+        この文書の設定では1段に20文字が標準であるが、
+        この行には19文字しか入っていない。
+        特に改行してはいけない要素があるわけでも特殊ななにかをしたわけでもない。
+        この行に20文字いれても問題ないはずなのにである\exclamation;
+      }
+      +p{
+        どうやらこれは\emph{行分割アルゴリズムの実装のバグ}なようである。
+        該当箇所をパッチとともにリスト\ref(`list:badness`);に示す。
+        \code-float-file?:(`list:badness`)({
+          行分割アルゴリズムの実装のバグとOverfullした場合のbadness。
+        })(`badness.diff`);%
+        \code{pure_ratio}というのは伸縮可能量に対する実際の伸縮量の割合で、
+        この値を${p}とすると、\TeX;では
+        ${\min(100 p^{3}, 10000)}をその行の空白の伸縮に関するデメリットbadnessとして扱う。
+        ただし、Overfullが起こった行では100000になる。
+      }
+      +return-to-grid;
+      +adjust-height;
+      +p{
+        \draw-grid{この前提}のもとでリスト\ref(`list:badness`);の元のコードを見ていただくと、
+        おかしいことに気がつくだろう。
+        すなわち、${0 \leq p \leq 1}であるのだから、\code{int_of_float (pure_ratio \*\* 3.)}は0または1の値しか取らない。
+        10000倍にしてから整数にすべきだろう。
+        実は\code{\hyper-target(`ratio_stretch_limit`);ratio_stretch_limit}%
+        が2なので正確には${0 \leq p \leq 2}なのだ\hyper-target(`ex:last-line`);%
+        が（\LaTeX;ではデフォルトで${0 \leq p^{3} \leq 2}）、
+        いずれにせよ行に対するbadnessの取り得る値は9通り（とOverfullの場合で10通り）
+        だけになってしまう。
+      }
+      +p{
+        \TeX;では${p^{3}}を100倍しているのに対し、\SATySFi;では10000倍にしているのも気になるところだ。
+        Underfullに対してOverfullの許容度が事実上大きくなっているほか、こちらはさほど重要ではないかもしれないが、
+        ペナルティの値の挙動が\TeX;での体感と異なってくる可能性がある。
+      }
+    >
+
+    +vspace(1.0pt);% はみ出す数式を右の段からずらす
+    +subsection {数式がアレ} <
+      +p{
+        \draw-grid-this-line();%
+        \SATySFi;での数式では${1+2+3+4+⋯=-1/12}のように\emph{インライン数式中で}%
+        （さらに後でも、こちらはどうやら\code{script-guard Latin}の後で改行できないようだ）
+        \emph{自動的に改行することができない}ようである。
+        もちろん、インライン数式中の改行は望ましくないかもしれないが、それでもOverfull/Underfullよりはよい。
+        どうしても長いインライン数式を書きたくなることもあるかもしれない。
+        そのような場合に\TeX;のように関係子や二項演算子の後ろで改行できると便利である。
+      }
+      +renew-ctx(set-adjacent-stretch-ratio 0.025) <
+        +p{
+          \draw-grid-this-line();%
+          さらには数字の直前でもなぜだかこのよう2改行することができないようである。
+        }
+      >
+    >
+  >
+
+  +section {約物がアレ} <
+    +subsection {約物間がアレ} <
+      +p{
+        \SATySFi;では
+        『\href(`https://www.w3.org/TR/jlreq/#positioning_of_consecutive_opening_brackets_closing_brackets_comma_full_stops_and_middle_dots`){日本語組版処理の要件}』
+        に従って約物間の空白の入り方を調整しているが、
+        その定義は\emph{かなり甘い}。
+        次の例は、上が\SATySFi;で何も調整をしていない状態、下が
+        『\href(`https://www.w3.org/TR/jlreq/#positioning_of_consecutive_opening_brackets_closing_brackets_comma_full_stops_and_middle_dots`){日本語組版処理の要件}』
+        に従って手動で空白を調整したものである：
+        \example <
+          +np{\draw-grid-inline{
+            「『規格』・『要件』に準拠。」
+          }}
+          +np{\draw-grid-inline{
+            「\hspace-ratio(0. -. 0.5);『規格』\hspace-ratio(0. -. 0.5);・\hspace-ratio(0. -. 0.5);『要件』に準拠。\hspace-ratio(0. -. 0.5);」
+          }}
+        >
+      }
+      +p{
+        パッチを作ったのでリスト\ref(`list:punct`);に載せておくが、
+        長いので\repository();で見た方がよい。
+      }
+      +p{
+        組版ソフトにおいて、こういった不具合が長期間バグと認識されていない状況にあるのは残念である。
+        言語機能だけじゃなくて組版のことももっと気にしてください。
+      }
+    >
+
+    +subsection {欧文と約物間がアレ} <
+      +p{
+        約物同士の間だけでなく、約物と欧文の間の空白の入り方もまた
+        『\href(`https://www.w3.org/TR/jlreq/#handling_of_western_text_in_japanese_text_using_proportional_western_fonts`){日本語組版処理の要件}』
+        に従ってない。
+        次の例もやはり上が\SATySFi;によるもの、下が手動で調整したものである：
+      }
+      +example <
+        +np{\draw-grid-inline{
+        規格、JLReq（要件）
+        }}
+        +np{\draw-grid-inline{
+        規格、\hspace-ratio(0.);JLReq\hspace-ratio(0.);（要件）
+        }}
+      >
+      +p{
+        上の方は一見問題なさそうだが、よくみると和文の約物と欧文の間の空白がおかしい。
+        \emph{約物由来の空白の大きさではなく、和文と欧文の間に入る空白の大きさになっている}。
+        このせいで、読点と続く欧文の間が詰まった感じになってしまう（この文書に頻出する）。
+      }
+      +p{
+        パッチはリスト\ref(`list:western`);だが、やはり長いので\repository();で見た方がよいだろう。
+      }
+    >
+
+    +subsection ?:(`sec:line-head`){段落頭がアレ} <
+      +p{
+        『\hyper-target(`ex:open`);\href(`https://www.w3.org/TR/jlreq/#positioning_of_opening_brackets_at_line_head`){日本語組版処理の要件}』\draw-grid-this-line();%
+        の\href(`https://www.w3.org/TR/2020/NOTE-jlreq-20200811/#positioning_of_opening_brackets_at_line_head`){3.1.5節}では、
+        「行頭の始め括弧類の配置方法」と\draw-grid-this-line();%
+        して3通りが示されている。
+        ところが、\SATySFi;はこのうちの\emph{どれにも準拠していない}のである。
+        もっとも、これは\pLaTeX;の標準である\class{jclasses}でも同じである。
+      }
+      +p{
+        配置方法は3通り示されてるので解決策はいくつもあるが（ユーザが選択できるようにすべきだろうが）、
+        シンプルには段落のインデントと最初の文字である括弧との間に空白が入りさえしなければ問題は解決する（\LaTeX;の\class{jsclasses}の挙動）。
+        実はリスト\ref(`list:punct`);で文字クラスに全角空白を追加しているが、\code{inline-skip}の代わりにこの全角空白を使うと
+        「インデントしつつ括弧類との間に空白を入れない」という挙動が実現できるので、
+        当面の解決策にはよいかもしれない。
+      }
+      +p{
+        もしも現行の「段落のインデントと括弧の間には空白が入る」という挙動を維持するのであれば、
+        行によって開始位置がずれないようにするため、
+        その空白は行長調整に使われないようにすべきだろう。
+        実際に\ref?:({先ほどの例})(`ex:open`);の段落始めでは問題の空白が行長調整に使われて縮んだ結果、
+        インデントが期待される1.5全角よりも短くなってしまっている。
+      }
+      +p{\draw-grid-this-line();%
+        ところで、行長調整で段落1文字目\line-break;の位置がずれるのは括弧類に限らないようである。
+        この段落の1行目では改行位置を手動で指定しているが、それにしても
+        \emph{段落のインデントと1文字目の間が行長調整に使われて伸びる}のは不可解である。
+      }
+    >
+
+    +med-break;
+    +p{
+      個人的には、こういった文字間の空白の入り方・ペナルティなどをユーザが変更できるようにするには、
+      \XeTeX;の文字クラス（character classes）を導入するとよいと思っている。
+      \SATySFi;の用語で説明するならば、テキスト処理文脈が
+      \listing{
+        * 文字と文字クラスの対応
+        * ある文字クラスの文字とある文字クラスの文字が連続したとき、間に自動的に挿入されるinline-boxes
+      }%
+      の情報を保持しているということである。
+      文字間のinline-boxesが挿入されるタイミングが問題だが、inline-boxesを新たに作ったとき（結合なども含む）とすれば多分うまくいく。
+      この仕組みを導入すれば、他にも
+      \listing{
+        * 中央・左・右揃え
+        * \code{set-space-ratio-between-scripts}
+        * \code{set-adjacent-stretch-ratio}
+      }%
+      などが全部1つにまとめられる見込みである。
+      さらに文字クラスで文字を回転など加工できるようにすれば、縦書きにも役立つだろう。
+      \ref?:({段落頭の括弧類})(`sec:line-head`);についても、段落始めを表す仮想的な文字クラスと\code{script-guard}を組み合わせればうまくいくはずである。
+    }
+  >
+
+  +section {クラスがアレ} <
+    +subsection {デフォルトがアレ} <
+      +p{
+        \pLaTeX;で\class{jclasses}に組版上の問題があるために使用すべきでないとされているのは有名な話だが、
+        \SATySFi;でもその二の舞になりそうである。
+        たとえば\class{stdja}では標準でフォントサイズが\unit{12}{pt}、行長が\unit{440}{pt}であるが、これから計算すると1行あたり約36.67文字となり、整数にならない。
+        \emph{すくなくとも段の行長が全角の整数倍ですらないようなクラスファイルには、
+        まともな日本語組版を期待することはできない}。
+      }
+      +p{
+        \class?:(`https://github.com/abenori/satysfi-class-jlreq`){jlreq}は日本語組版を考慮の上で作られているが、
+        それ以外の多くのクラスについては、一見問題なく動作するものの、細かなところで不合理な組版になっている気がしてならない。
+        一般のユーザが作るクラスファイルにそこまで求めるのは酷だが、せめて\emph{標準のものくらいは十分に組版を意識して欲しい}。
+      }
+    >
+
+    +subsection {浮動体がアレ} <
+      +p{
+        すでに広く知られていることだと思うが、\SATySFi;ではフロートは必ず次以降のページに配置される。
+        \class?:(`https://github.com/abenori/satysfi-class-jlreq`){jlreq}など相互参照を利用して現在ページに表示するようにしているものもあるが、それでも完璧ではない。
+        私も相互参照を利用して\LaTeX;のような浮動体を実装できないかと考えたことはあるのだが、
+        「現在のページの残りの高さに応じてその場にフロートを配置するか次のページに持っていくかを決定する」という挙動が極めて実装困難であったため諦めた（
+        \code{page-break-multicolumn A4Paper [0pt\; 0pt\; 0pt\; 0pt]}みたいなことをすればもしかしたら実現できるかもしれない）。
+      }
+      +p{
+        \LaTeX;同等の浮動体機能を実現するためには、ページ分割と同期して挿入するblock-boxesを変更することが必要になる。
+        もっともシンプルに実装できそうな案としては、\code{hook-page-break-block}に似た、
+        フック関数が起動するとその場所にblock-boxesを追加しつつそのページのページ分割を最初からやり直すようなプリミティヴを追加すれば、
+        \SATySFi;側で実装しなくても頑張れば浮動体を実現できるはずである。
+      }
+    >
+  >
+
+  +big-break;
+  +p{
+    以上、\SATySFi;のアレな点を見てきた。
+    探せばもっとたくさんありそうなので、今後に期待である。
+    \SATySFi;はアレ\exclamation;
+  }
+  +p{
+    この文書のソースコードやパッチは\repository();にある。
+    ライセンスなどはそこを参照されたいが、この文書自体は\href(`https://creativecommons.org/licenses/by-sa/4.0/`){CC BY-SA 4.0}、
+    パッチについては\href(`https://creativecommons.org/publicdomain/zero/1.0/`){CC0}である。
+  }
+
+  +code-float-file?:(`list:punct`)({
+    約物間の空白を\code{pure_space_between_classes}で規則を追加し調整。
+    全角空白の文字クラス（\code{JLIS}）も増やしている。
+    \file{lineBreakDataMap.ml}では中点類として扱われる文字を定義。
+    リスト\ref(`list:western`);ともども勘で書いたので正直自信はない。
+  })(`punct.diff`);%
+
+  +code-float-file?:(`list:western`)({
+    約物と欧文間の空白を調整。
+    \code{pure_space_between_scripts}が主な変更箇所で、他は補助関数。
+  })(`western.diff`);%
+>
+
+%% EOF

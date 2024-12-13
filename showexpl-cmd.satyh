@@ -1,0 +1,225 @@
+%% showexpl-cmd.satyh
+% https://github.com/tairahikaru/satysfi-are-2024
+@stage: 1
+@import: showexpl-parse
+@import: showexpl0
+@require: list
+@import: lmmonodigit
+
+module ShowExplCmd : sig
+
+  val show-expl-inline : (context -> string -> string -> inline-boxes -> inline-boxes) option -> string -> string -> (context -> inline-boxes) -> inline-text
+  val show-expl-block : (context -> string -> string -> block-boxes -> block-boxes) option -> string -> string -> (context -> block-boxes) -> block-text
+
+  val show-expl-to-ib : (context -> string option -> inline-boxes -> inline-boxes -> inline-boxes) -> context -> string -> string -> inline-boxes -> inline-boxes
+  val show-expl-to-bb : (context -> string option -> block-boxes -> block-boxes -> block-boxes) -> context -> string -> string -> block-boxes -> block-boxes
+
+  val set-code-font : context -> context
+  val code-inline : context -> string -> inline-boxes
+  val code-block : context -> string -> block-boxes
+
+  val hyper-target : string option -> inline-boxes
+  val hyper-target-block : context -> string option -> block-boxes -> block-boxes
+
+end = struct
+
+  %% util
+
+  let code-font-latin = `lmmono`
+  let code-font-kana = `ipaexg`
+  let code-font-hanideographic = code-font-kana
+  let set-code-font ctx =
+    let ctx-tmp =
+      ctx
+      |> set-font Latin (code-font-latin, 1., 0.)
+      |> set-hyphen-penalty 100000
+      |> set-font Kana (code-font-kana, 1., 0.)
+      |> set-font HanIdeographic (code-font-hanideographic, 1., 0.)
+      |> set-space-ratio-between-scripts 0. 0. 0. Kana Latin
+      |> set-space-ratio-between-scripts 0. 0. 0. HanIdeographic Latin
+      |> set-space-ratio-between-scripts 0. 0. 0. Latin Kana
+      |> set-space-ratio-between-scripts 0. 0. 0. Latin HanIdeographic
+    in
+    let size = get-font-size ctx-tmp in
+    let (w, _, _) = {_} |> read-inline ctx-tmp |> get-natural-metrics in
+    let (jw, _, _) = {漢} |> read-inline ctx-tmp |> get-natural-metrics in
+    let scale = (w *' 2.) /' jw in
+    ctx-tmp
+    |> set-space-ratio (w /' size) 0. 0.
+    |> set-font Kana (code-font-kana, scale, 0.)
+    |> set-font HanIdeographic (code-font-hanideographic, scale, 0.)
+
+  let no-break ib =
+    inline-frame-outer (0pt, 0pt, 0pt, 0pt) (fun _ _ _ _ -> []) ib
+
+  let hyper-target-offset = 20pt
+  let hyper-target labelopt =
+    match labelopt with
+    | Some(l) ->
+      hook-page-break (fun break (x, y) -> (
+        let () =register-cross-reference (l ^ `:page`) (break#page-number |> arabic) in
+        register-destination l (x -' hyper-target-offset, y +' hyper-target-offset)
+      ))
+    | None -> inline-nil
+  let hyper-target-block ctx labelopt bb =
+    match labelopt with
+    | Some(l) ->
+      let deco (x, y) _ h _ =
+        [
+          draw-text (x, y +' h) (hyper-target labelopt)
+        ]
+      in
+      let deco-empty _ _ _ _ = [] in
+      let deco-set =
+        (deco, deco, deco-empty, deco-empty)
+      in
+      block-frame-breakable ctx (0pt, 0pt, 0pt, 0pt) deco-set (fun _ -> bb)
+    | None -> bb
+
+  %% inline
+
+  let code-inline ctx raw =
+    let ctx-new = set-code-font ctx in
+    raw |> embed-string |> read-inline ctx-new |> script-guard Latin
+  let output-inline ctx ib =
+    ib
+
+  let show-expl-to-ib continuation ctx sstring raw ib =
+    let labelopt =
+      match string-explode sstring with
+      | [] ->  None
+      | [32] -> None
+      | _ -> Some(sstring)
+    in
+    let raw-ib =
+      raw |> code-inline ctx
+    in
+    let output-ib =
+      ib |> output-inline ctx
+    in
+    continuation ctx labelopt raw-ib output-ib
+  let show-expl-inline-merge ctx labelopt raw-ib output-ib =
+    let label = hyper-target labelopt in
+    let pre = {} |> read-inline ctx in
+    let insertion = {とすると「} |> read-inline ctx in
+    let post = {」} |> read-inline ctx in
+    pre ++ raw-ib ++ label ++ insertion ++ output-ib ++ post
+
+  %% block
+
+  let make-line-number ctx ln =
+    let unit = (get-font-size ctx) *' 0.9 in
+    LMMonoDigit.get-number-inline (Gray(0.2)) unit ln
+  let add-line-number ctx ln ib =
+    let ln-ib =
+      let ctx-new =
+        let size = get-font-size ctx in
+        ctx |> set-font-size (size *' 0.8) |> set-text-color (Gray(0.5))
+      in
+      ln |> make-line-number ctx-new
+    in
+    let ln-sep =
+      inline-skip (get-font-size ctx *' 0.2)
+    in
+    let (w, _, _) = ln-ib ++ ln-sep |> get-natural-metrics in
+    inline-skip (0pt -' w) ++ ln-ib ++ ln-sep ++ ib
+    |> no-break
+
+  let line-with-overfull-warnings ctx ib =
+    let line-width = get-text-width ctx in
+    let (w, h, d) = get-natural-metrics ib in
+    let bb =
+      no-break (ib ++ inline-fil) |> line-break true true ctx
+    in
+    inline-graphics line-width h d (fun point ->
+      draw-text point (embed-block-bottom ctx line-width (fun _ -> bb))
+      |> (fun g -> [g])
+    )
+
+  let code-block ctx raw =
+    let ctx-new = set-code-font ctx in
+    let aux ln (ss, line) =
+      (ShowExpl.repeat-space ss ^ line)
+      |> embed-string
+      |> read-inline ctx-new
+      |> add-line-number ctx-new (ln + 1)
+      |> (fun ib -> (
+        (line-with-overfull-warnings ctx-new ib) ++ discretionary (- 10000) inline-nil inline-nil inline-nil
+      ))
+    in
+    raw
+    |> split-into-lines
+    % 最終行が空であれば削除する必要
+    |> List.reverse |> (fun ((ss, x) :: xs) -> (
+      match string-explode x with
+      | [] -> xs
+      | _ -> (ss, x) :: xs
+    )) |> List.reverse
+    |> List.mapi aux
+    |> List.fold-left (++) inline-nil
+    |> line-break true true ctx
+  let output-block ctx bb =
+    let deco-set =
+      let deco (x, y) w h d =
+        let sep =
+          let size = ctx |> get-font-size in
+          let ctx-new = ctx |> set-font-size (size *' 0.8) |> set-code-font in
+          let (w, _, _) = {1} |> read-inline ctx |> get-natural-metrics in
+          (get-font-size ctx-new) *' 0.2 +' w *' 0.5
+        in
+        start-path (x -' sep, y +' h +' 2pt)
+          |> line-to (x -' sep, y -' d -' 2pt)
+          |> terminate-path
+          |> stroke 1.5pt (Gray(0.5))
+        |> (fun g -> [g])
+      in
+      (deco, deco, deco, deco)
+    in
+    block-frame-breakable ctx (0pt, 0pt, 0pt, 0pt) deco-set (fun _ -> bb)
+
+  let show-expl-to-bb continuation ctx sstring raw bb =
+    let labelopt =
+      match string-explode sstring with
+      | [] ->  None
+      | [32] -> None
+      | _ -> Some(sstring)
+    in
+    let raw-bb =
+      raw |> code-block ctx
+    in
+    let output-bb =
+      bb |> output-block ctx
+    in
+    continuation ctx labelopt raw-bb output-bb
+  let show-expl-block-merge ctx labelopt raw-bb output-bb =
+    let pre = '<> |> read-block ctx in
+    let insertion = ({このコードから次の出力を得る：} |> read-inline ctx) ++ inline-fil |> line-break true true ctx in
+    let post = '<> |> read-block ctx in
+    pre +++ (raw-bb |> hyper-target-block ctx labelopt) +++ insertion +++ output-bb +++ post
+
+  %% show-expl
+
+  let-inline ctx \eval-ctx f = f ctx
+  let-block ctx +eval-ctx f = f ctx
+  let show-expl-inline o sstring raw code =
+    {\eval-ctx(fun ctx -> (
+      let continuation =
+        match o with
+        | Some(f) -> f
+        | None -> show-expl-to-ib show-expl-inline-merge
+      in
+      continuation ctx sstring raw (code ctx)
+    ));}
+  let show-expl-block o sstring raw code =
+    '<+eval-ctx(fun ctx -> (
+      let continuation =
+        match o with
+        | Some(f) -> f
+        | None -> show-expl-to-bb show-expl-block-merge
+      in
+      continuation ctx sstring raw (code ctx)
+    ));>
+
+end
+
+%% EOF

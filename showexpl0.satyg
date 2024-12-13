@@ -1,0 +1,41 @@
+%% showexpl0.satyg
+% https://github.com/tairahikaru/satysfi-are-2024
+
+@stage: 0
+@require: list
+@import: showexpl-parse
+
+module ShowExpl0 = struct
+
+  let parse-positional-string (pos, s) =
+    ((get-input-position pos), s)
+
+  let show-expl indent-unit continuation s c e =
+    let f sstring raw code =
+      &(
+        ~continuation
+          ~(lift-string sstring)
+          ~(lift-string raw)
+          ~code
+      )
+    in
+    ShowExpl.show-expl-parse
+      (ShowExpl.show-expl-chop f (Some(indent-unit)))
+      (parse-positional-string s) c (parse-positional-string e)
+
+  let show-expl-without-end continuation s c =
+    let f sstring raw code =
+      &(
+        ~continuation
+          ~(lift-string sstring)
+          ~(lift-string raw)
+          ~code
+      )
+    in
+    ShowExpl.show-expl-parse-without-end
+      (ShowExpl.show-expl-chop f None)
+      (parse-positional-string s) c
+
+end
+
+%% EOF

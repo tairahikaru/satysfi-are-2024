@@ -1,0 +1,102 @@
+%% showexpl.satyg
+% https://github.com/tairahikaru/satysfi-are-2024
+
+@stage: 1
+@import: showexpl-cmd
+@import: showexpl0
+
+% \show-expl@~(@` `) ({
+%   ...
+% });
+let-inline \show-expl-ctx@ ~s c =
+  ~(
+    ShowExpl0.show-expl-without-end &(ShowExplCmd.show-expl-inline None)
+      s c
+  )
+let-inline \show-expl@ ~s c =
+  ~(
+    ShowExpl0.show-expl-without-end &(ShowExplCmd.show-expl-inline None)
+      s &(fun ctx -> ~c |> read-inline ctx)
+  )
+
+let-inline \show-expl-ctx-option@ ~s o c =
+  ~(
+    ShowExpl0.show-expl-without-end &(ShowExplCmd.show-expl-inline (Some(~o)))
+      s c
+  )
+let-inline \show-expl-option@ ~s o c =
+  ~(
+    ShowExpl0.show-expl-without-end &(ShowExplCmd.show-expl-inline (Some(~o)))
+      s &(fun ctx -> ~c |> read-inline ctx)
+  )
+
+let-block +show-expl-ctx@ ~s c =
+  ~(
+    ShowExpl0.show-expl-without-end &(ShowExplCmd.show-expl-block None)
+      s c
+  )
+let-block +show-expl@ ~s c =
+  ~(
+    ShowExpl0.show-expl-without-end &(ShowExplCmd.show-expl-block None)
+      s &(fun ctx -> ~c |> read-block ctx)
+  )
+
+let-block +show-expl-ctx-option@ ~s o c =
+  ~(
+    ShowExpl0.show-expl-without-end &(ShowExplCmd.show-expl-block (Some(~o)))
+      s c
+  )
+let-block +show-expl-option@ ~s o c =
+  ~(
+    ShowExpl0.show-expl-without-end &(ShowExplCmd.show-expl-block (Some(~o)))
+      s &(fun ctx -> ~c |> read-block ctx)
+  )
+
+%% \show-expl@~(@` `) ({
+%%   ...
+%% }) ~(@` `);
+%let-inline \show-expl-ctx@ ~s c ~e =
+%  ~(
+%    ShowExpl0.show-expl 2 &(ShowExplCmd.show-expl-inline None)
+%      s c e
+%  )
+%let-inline \show-expl@ ~s c ~e =
+%  ~(
+%    ShowExpl0.show-expl 2 &(ShowExplCmd.show-expl-inline None)
+%      s &(fun ctx -> ~c |> read-inline ctx) e
+%  )
+%
+%let-inline \show-expl-ctx-option@ ~s o c ~e =
+%  ~(
+%    ShowExpl0.show-expl 2 &(ShowExplCmd.show-expl-inline (Some(~o)))
+%      s c e
+%  )
+%let-inline \show-expl-option@ ~s o c ~e =
+%  ~(
+%    ShowExpl0.show-expl 2 &(ShowExplCmd.show-expl-inline (Some(~o)))
+%      s &(fun ctx -> ~c |> read-inline ctx) e
+%  )
+%
+%let-block +show-expl-ctx@ ~s c ~e =
+%  ~(
+%    ShowExpl0.show-expl 2 &(ShowExplCmd.show-expl-block None)
+%      s c e
+%  )
+%let-block +show-expl@ ~s c ~e =
+%  ~(
+%    ShowExpl0.show-expl 2 &(ShowExplCmd.show-expl-block None)
+%      s &(fun ctx -> ~c |> read-block ctx) e
+%  )
+%
+%let-block +show-expl-ctx-option@ ~s o c ~e =
+%  ~(
+%    ShowExpl0.show-expl 2 &(ShowExplCmd.show-expl-block (Some(~o)))
+%      s c e
+%  )
+%let-block +show-expl-option@ ~s o c ~e =
+%  ~(
+%    ShowExpl0.show-expl 2 &(ShowExplCmd.show-expl-block (Some(~o)))
+%      s &(fun ctx -> ~c |> read-block ctx) e
+%  )
+
+%% EOF

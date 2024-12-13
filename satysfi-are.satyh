@@ -1,0 +1,1313 @@
+%% satysfi-are.satyh
+% https://github.com/tairahikaru/satysfi-are-2024
+
+@import: drawgrid
+@import: showexpl
+@require: list
+
+type point = length * length
+
+module Are : sig
+
+  direct +p : [inline-text] block-cmd
+  direct +np : [inline-text] block-cmd
+  direct +nnp : [inline-text] block-cmd
+
+  direct \line-break : [] inline-cmd
+  direct \new-line : [] inline-cmd
+
+  direct \hspace : [length] inline-cmd
+  direct \hspace-ratio : [float] inline-cmd
+
+  direct +vspace : [length] block-cmd
+  direct +med-break : [] block-cmd
+  direct +big-break : [] block-cmd
+
+  direct +clear-page : [] block-cmd
+
+  direct \display-inline : [inline-text] inline-cmd
+  direct \display-block : [block-text] inline-cmd
+
+  direct \emph : [inline-text] inline-cmd
+
+  direct \ref : [inline-text?; string] inline-cmd
+  direct \ref-page : [(context -> string -> inline-boxes)?; string] inline-cmd
+  direct \href : [string; inline-text] inline-cmd
+  direct \hyper-target : [string] inline-cmd
+
+  direct \example : [block-text] inline-cmd
+  direct +example : [block-text] block-cmd
+
+  val get-column-start : length -> length
+
+  direct +section : [string?; inline-text; block-text] block-cmd
+  direct +subsection : [string?; inline-text; block-text] block-cmd
+
+  direct \draw-grid-this-page : [] inline-cmd
+  direct +draw-grid-this-page : [] block-cmd
+
+  val add-float : (((|page-number : int|) -> point -> unit) -> 'a) -> context -> (context -> block-boxes) -> 'a
+
+  direct +return-to-grid : [] block-cmd
+  direct +adjust-height : [] block-cmd
+
+  val document : (|title : inline-text; author : inline-text; date : inline-text|) -> block-text -> document
+
+end = struct
+
+  let-inline ctx \math m =
+    m |> embed-math ctx |> script-guard Latin
+
+  let normal-size = 10pt
+  let normal-leading = 17.5pt
+  let column-width = normal-size *' 20.
+  let column-gap = normal-size *' 2.
+  let column-number = 2
+  let text-width = column-width *' (column-number |> float) +' column-gap *' (column-number - 1 |> float)
+  let text-height = normal-leading *' 33. +' normal-size
+  let font-cjk = (`ipaexm`, 1., 0.)
+  let font-latin = (`lmroman`, 1.08, 0.)
+  let font-cjk-head = (`ipaexg`, 1., 0.)
+  let font-latin-head = (`lmroman-b`, 1.08, 0.)
+  let (paper-width, paper-height) = (182mm, 257mm)
+  let xmargin = (paper-width -' text-width) *' 0.5
+  let ymargin = (paper-height -' text-height) *' 0.5
+  let text-origin = (xmargin, ymargin)
+
+  let-block ctx +p it =
+    inline-skip (get-font-size ctx)
+    ++ read-inline ctx it
+    ++ inline-fil
+    |> line-break true true ctx
+  let-block ctx +np it =
+    read-inline ctx it ++ inline-fil
+    |> line-break true true ctx
+  let-block ctx +nnp it =
+    read-inline ctx it
+    |> line-break true true ctx
+
+  let-inline ctx \line-break =
+    let gc = DrawGrid.get-grid-config ctx in
+    embed-block-breakable ctx (gc#leading -' gc#font-height -' gc#font-depth |> block-skip)
+    ++ omit-skip-after
+
+  let-inline ctx \new-line =
+    inline-fil
+    ++ ({\line-break;} |> read-inline ctx)
+    ++ omit-skip-after
+
+  let-inline ctx \hspace l =
+    inline-skip l
+
+  let-inline ctx \hspace-ratio r =
+    (get-font-size ctx) *' r
+    |> inline-skip
+
+  let-block ctx +vspace l =
+    block-skip l
+
+  let-block ctx +big-break =
+    normal-leading
+    |> block-skip
+
+  let-block ctx +med-break =
+    normal-leading *' 0.5
+    |> block-skip
+
+  let-block ctx +clear-page =
+    clear-page
+
+  let-inline ctx \display-inline it =
+    let gc = DrawGrid.get-grid-config ctx in
+    inline-fil
+    ++ ({\line-break;#it;} |> read-inline ctx)
+    ++ inline-fil
+    ++ ({\line-break;} |> read-inline ctx)
+
+  let-inline ctx \display-block bt =
+    let ib = bt |> read-block ctx |> embed-block-breakable ctx in
+    inline-fil ++ ib
+
+  let-inline ctx \emph it =
+    let ctx-new =
+      let (current-cjk, _, _) = get-font Kana ctx in
+      let (cjk-head, _, _) = font-cjk-head in
+      if string-same cjk-head current-cjk then
+        ctx
+        |> set-font Latin font-latin
+        |> set-font Kana font-cjk
+        |> set-font HanIdeographic font-cjk
+      else
+        ctx
+        |> set-font Latin font-latin-head
+        |> set-font Kana font-cjk-head
+        |> set-font HanIdeographic font-cjk-head
+    in
+    read-inline ctx-new it
+
+  let create-link f ib =
+    let (w, h, d) = ib |> get-natural-metrics in
+    let left-ghost =
+      match get-leftmost-script ib with
+      | Some(script) -> script-guard script inline-nil
+      | None -> inline-nil
+    in
+    let right-ghost =
+      match get-rightmost-script ib with
+      | Some(script) -> script-guard script inline-nil
+      | None -> inline-nil
+    in
+    let margin = 0.6pt in
+    let url-deco (x, y) w h d =
+      let () =
+        f (x -' margin, y) (w +' margin +' margin) (h +' margin) (d +' margin) (Some((0.4pt, (RGB(1., 0., 0.)))))
+      in
+      []
+    in
+    left-ghost ++ inline-frame-breakable (0pt, 0pt, 0pt, 0pt) (url-deco, url-deco, url-deco, url-deco) ib ++ right-ghost
+
+  let-inline ctx \ref ?:it-opt label =
+    let counter-it =
+      match it-opt with
+      | Some(it) -> it
+      | None -> (
+        match get-cross-reference label with
+        | Some(v) -> v |> embed-string
+        | None ->
+          let () = `[Warning] undefined reference: `# ^ label |> display-message in
+          `??` |> embed-string
+      )
+    in
+    create-link (register-link-to-location label) (counter-it |> read-inline ctx)
+
+  let-inline ctx \ref-page ?:f-opt label =
+    let converter page-number =
+      match f-opt with
+      | Some(f) ->
+        page-number |> f ctx
+      | None ->
+        page-number |> embed-string |> read-inline ctx
+    in
+    let page-ib =
+      match get-cross-reference (label ^ `:page`) with
+      | Some(page-number) -> converter page-number
+      | None -> {??} |> read-inline ctx
+    in
+    create-link (register-link-to-location label) page-ib
+
+  let-inline ctx \hyper-target label =
+    ShowExplCmd.hyper-target (Some(label))
+
+  let-inline ctx \href url it =
+    create-link (register-link-to-uri url) (it |> read-inline ctx)
+
+  let-block ctx +example bt =
+    let gc = DrawGrid.get-grid-config ctx in
+    let margin = gc#leading *' 0.5 in
+    let deco-set =
+      let deco _ _ _ _ = [] in
+      (deco, deco, deco, deco)
+    in
+    block-skip (margin -' (gc#leading -' gc#font-width))
+    +++ block-frame-breakable ctx (gc#font-width *' 2., 0pt, 0pt, 0pt) deco-set (fun ctx -> bt |> read-block ctx)
+    +++ block-skip (margin -' (gc#leading -' gc#font-width))
+  let-inline ctx \example bt =
+    let bb =
+      let gc = DrawGrid.get-grid-config ctx in
+      block-skip (gc#leading -' gc#font-width)
+      +++ read-block ctx '<+example(bt);>
+    in
+    let it =
+      bb |> embed-block-breakable ctx
+    in
+    inline-fil ++ it
+
+  let-rec get-column-start x =
+    if x -'  column-width <' xmargin then
+      xmargin
+    else
+      column-width +' column-gap +' get-column-start (x -' column-width -' column-gap)
+
+  let-mutable outline-ref <- []
+  let-mutable num-section <- 0
+  let-mutable num-subsection <- 0
+  let num-section-list = [[num-section]; [num-subsection]]
+
+  let set-heading-font pre-margin post-margin font-scale leading-scale ctx =
+    ctx
+    |> set-font-size (normal-size *' font-scale)
+    |> set-leading (normal-leading *' leading-scale)
+    |> set-paragraph-margin (normal-leading -' normal-size) (normal-leading -' normal-size)
+    |> set-font Latin font-latin-head
+    |> set-font Kana font-cjk-head
+    |> set-font HanIdeographic font-cjk-head
+
+  let inline-strut h d =
+    inline-graphics 0pt h d (fun _ -> [])
+
+  let start-section counter-list name pre-margin post-margin font-scale leading-scale ctx labelopt title inner =
+    let depth = List.length counter-list in
+    let () =
+      % 従属カウンタのリセット
+      let _ =
+        List.mapi (fun d ref-list -> (
+          if d < depth then
+            ()
+          else
+            let _ = List.map (fun ref -> (ref <- 0)) ref-list in
+            ()
+        )) num-section-list
+      in
+      let r =
+        match List.nth (depth - 1) counter-list with
+        | Some(r) -> r
+        | None -> `This can't happen!` |> abort-with-message
+      in
+      r <- !r + 1
+    in
+    let number-list = counter-list |> List.map (fun r -> !r) in
+    let number-text =
+      let (x :: xs) = number-list in
+      match xs with
+      | [] -> x |> arabic
+      | _ ->
+        (x |> arabic) ^ (xs |> List.fold-left (fun l r -> l ^ `.` ^ (r |> arabic)) ` `)
+    in
+    let label =
+      match labelopt with
+      | Some(l) ->
+        let () = register-cross-reference l number-text in
+        l
+      | None -> `satysfi-are-start-section-` ^ name ^ `-` ^ number-text
+    in
+    let text-title =
+      number-text ^ #` `# ^ (title |> read-inline ctx |> extract-string)
+    in
+    let outline = (List.length counter-list, text-title, label, false) in
+    let () = outline-ref <- outline :: !outline-ref in
+    let ctx-head = ctx |> set-heading-font pre-margin post-margin font-scale leading-scale in
+    let title-ib =
+      let margin-adjust =
+        normal-leading -' normal-size *' font-scale +' normal-leading -' normal-size
+      in
+      ShowExplCmd.hyper-target (Some(label))
+      ++ (inline-strut (pre-margin +' normal-leading *' leading-scale -' margin-adjust) 0pt)
+      ++ ((number-text  ^ #` `#) |> embed-string |> read-inline ctx-head)
+      ++ (title |> read-inline ctx-head)
+      ++ inline-fil
+      ++ (inline-strut 0pt (post-margin -' (normal-leading -' normal-size)))
+    in
+    let title-bb =
+      title-ib |> line-break true false ctx-head
+    in
+    let inner-bb =
+      inner |> read-block ctx
+    in
+    title-bb +++ inner-bb
+
+  let-block ctx +section ?:labelopt title inner =
+    let pre-margin = normal-leading *' 0.8 in
+    let post-margin = normal-leading *' 0.6 in
+    let total-height = normal-leading *' 3. -' normal-size in
+    let font-scale = (total-height -' pre-margin -' post-margin) /' normal-size in
+    start-section [num-section] `section` pre-margin post-margin font-scale 1.
+      ctx labelopt title inner
+  let-block ctx +subsection ?:labelopt title inner =
+    let font-scale = 1.2 in
+    let total-height = normal-leading *' 2. -' normal-size in
+    let total-margin = total-height -' normal-size *' font-scale in
+    start-section [num-section; num-subsection] `subsection` (total-margin *' 0.6) (total-margin *' 0.4) font-scale 1.
+      ctx labelopt title inner
+
+  let-mutable draw-grid-ref <- 0
+  let-inline ctx \draw-grid-this-page =
+    hook-page-break (fun break _ -> (
+      draw-grid-ref <- break#page-number
+    ))
+    ++ omit-skip-after
+  % hook-page-break-blockはblock-nilになってないような
+  let-block ctx +draw-grid-this-page =
+    hook-page-break-block (fun break _ -> (
+      draw-grid-ref <- break#page-number
+    ))
+
+  let-mutable column-count <- 0
+
+  let string-to-float str =
+    let aux (i, d, b) r =
+      let num = r - 48 in
+      if r == 46 then
+        (i, d, true)
+      else if b then
+        (i, d * 10 + num, true)
+      else
+        (i * 10 + num, d, false)
+    in
+    let (i, d, _) =
+      string-explode str
+      |> List.fold-left aux (0, 0, false)
+    in
+    let ddigit = d |> arabic |> string-explode |> List.length in
+    let-rec power | n 0 = 1 | n m = n * (power n (m - 1)) in
+    ((i * (power 10 ddigit) + d) |> float) /. (power 10 ddigit |> float)
+
+  let-mutable page-break-status <- -1
+  let-mutable float-ref <- []
+  let add-float hook-page ctx bbf =
+    hook-page (fun break _ -> (
+      let ctx-normal =
+        ctx
+        |> set-font-size normal-size
+        |> set-leading normal-leading
+      in
+      let bb =
+        let current-width = get-text-width ctx in
+        let deco ____ = [] in
+        let deco-set = (deco, deco, deco, deco) in
+        block-frame-breakable ctx-normal (0pt, (current-width -' text-width), 0pt, 0pt) deco-set bbf
+      in
+      float-ref <- List.append !float-ref [bb]
+    ))
+  let-mutable float-skip <- 0pt
+  let-rec set-float () =
+    if !column-count mod column-number == 1 then
+      if 0pt <' !float-skip then
+        block-nil % float中でfloat追加した場合
+      else
+        match !float-ref with
+        | [] -> block-nil
+        | lst ->
+          let floats = List.fold-left (+++) block-nil lst in
+          let () = float-skip <- !float-skip +' (get-natural-length floats) in
+          let () = float-ref <- [] in
+          let ctx = get-initial-context column-width (command \math) in
+          let deco-set =
+            let deco _ _ _ _ = [] in
+            let deco-register (x, y) _ _ d =
+              let (origx, origy) = text-origin in
+              let value = ((y +' d) -' origy) /' 1pt |> show-float in
+              let () = register-cross-reference (`are-float-skip-` ^ arabic !column-count) value in
+              []
+            in
+            (deco-register, deco, deco, deco-register)
+          in
+          block-frame-breakable ctx (0pt, 0pt, 0pt, 0pt) deco-set (fun _ -> floats)
+    else
+      if 0pt <' !float-skip then
+        if text-height <' !float-skip then
+          let currentcol =
+            if (!column-count mod column-number) == 0 then
+              column-number
+            else
+              !column-count mod column-number
+          in
+          let () = float-skip <- !float-skip -' text-height in
+          if currentcol == 2 then
+            let-rec aux | 0 = block-nil | n = clear-page +++ aux (n - 1) in
+            aux (column-number - currentcol + 1)
+          else
+            % clear-page 既に追加済み
+            block-nil
+        else
+          let float-skip-value = !float-skip in
+          let () = float-skip <- 0pt in
+          match `are-float-skip-` ^ arabic !column-count |> get-cross-reference with
+          | Some(v) ->
+            let vl = 1pt *' (string-to-float v) in
+            if vl <' float-skip-value then
+              float-skip-value |> block-skip
+            else
+              vl |> block-skip
+          | None ->
+            % avoid cross reference warning
+            let () = register-cross-reference (`are-float-skip-` ^ arabic !column-count) `0.` in
+            float-skip-value |> block-skip
+      else
+        block-nil
+
+  let make-title ctx title author date =
+    let ctx-new =
+      ctx
+      |> set-font-size normal-size
+      |> set-leading normal-leading
+      |> set-font Latin font-latin
+      |> set-font Kana font-cjk
+      |> set-font HanIdeographic font-cjk
+      |> set-paragraph-margin normal-size normal-size
+    in
+    let title-ib =
+      embed-block-bottom ctx-new text-width (fun ctx-long -> (
+        let make-line it ctx =
+          let ib = it |> read-inline ctx in
+          let (w, _, _) = ib |> get-natural-metrics in
+          let skip = (text-width -' w) *' 0.5 |> inline-skip in
+          skip ++ ib ++ inline-fil
+          |> line-break true false ctx
+        in
+        [
+          ctx-long
+          |> set-font-size (normal-size *' 2.5)
+          |> make-line title;
+          ctx-long
+          |> set-font-size (normal-size *' 1.1)
+         |> make-line author;
+          ctx-long
+          |> set-font-size (normal-size *' 0.9)
+          |> make-line date;
+          block-skip normal-size;
+        ]
+        |> List.fold-left (+++) (block-skip normal-size)
+      ))
+    in
+    title-ib ++ inline-skip (column-width -' text-width)
+    |> line-break true false ctx-new
+  let make-title-space ctx title author date =
+    let title-bb = make-title ctx title author date in
+    get-natural-length title-bb
+    |> block-skip
+
+  let-mutable return-to-grid-ref <- 0
+  let-block ctx +return-to-grid =
+    let label = `return-to-grid-` ^ (arabic !return-to-grid-ref) in
+    let () = return-to-grid-ref <- !return-to-grid-ref + 1 in
+    let skip =
+      match get-cross-reference label with
+      | Some(v) ->
+        let (_, yorigin) = text-origin in
+        let y = paper-height -' 1pt *' (string-to-float v) in
+        let lines =
+          ((y -' yorigin -' normal-size) /' normal-leading |> round) + 1
+        in
+        let gridy =
+          yorigin +' normal-leading *' (float lines -. 1.) +' normal-size
+        in
+        if gridy -' y <' 0pt then
+          gridy -' y +' normal-leading
+        else
+          gridy -' y
+
+      | None -> 0pt
+    in
+    let deco-set =
+      let deco (_, y) _ h _ =
+        let () = register-cross-reference label ((y +' h) /' 1pt |> show-float) in
+        []
+      in
+      (deco, deco, deco, deco)
+    in
+    block-skip (0pt -' 15pt)
+    +++ block-frame-breakable (ctx |> set-min-paragraph-ascender-and-descender 0pt 0pt) (0pt, 0pt, 0pt, skip) deco-set (fun ctx ->
+      block-nil
+    )
+  let-block ctx +adjust-height =
+    let gc = DrawGrid.get-grid-config ctx in
+    gc#grid-height -' gc#font-height -' gc#grid-depth -' gc#leading +' gc#font-width
+    |> block-skip
+
+  let document conf bt =
+    let ctx =
+      get-initial-context column-width (command \math)
+      |> set-dominant-narrow-script Latin
+      |> set-dominant-wide-script Kana
+      |> set-language Kana Japanese
+      |> set-language HanIdeographic Japanese
+      |> set-language Latin English
+      |> set-font-size normal-size
+      |> set-leading normal-leading
+      |> set-paragraph-margin (normal-leading -' normal-size) (normal-leading -' normal-size)
+      |> set-font Latin font-latin
+      |> set-font Kana font-cjk
+      |> set-font HanIdeographic font-cjk
+      |> set-adjacent-stretch-ratio 0.1
+    in
+    let () =
+      register-document-information (|
+        title = Some(conf#title |> read-inline ctx |> extract-string);
+        author = Some(conf#author |> read-inline ctx |> extract-string);
+        subject = None;
+        keywords = [];
+      |)
+    in
+    let grid-config = DrawGrid.get-grid-config ctx in
+    let gridf break = (|
+      line-width =
+        if break#page-number == !draw-grid-ref then
+          column-width
+        else
+          0pt;
+      grid-config = grid-config;
+    |)
+    in
+    let bb = read-block ctx bt in
+    let hook-bb =
+      hook-page-break-block (fun break point -> (
+        page-break-status <- 0
+      ))
+    in
+    let document =
+      DrawGrid.grid-page-break-multicolumn gridf (UserDefinedPaper(paper-width, paper-height)) [(column-width +' column-gap)]
+        (fun () -> (
+          let () = column-count <- !column-count + 1 in
+          if !column-count == 1 then
+            make-title ctx conf#title conf#author conf#date
+          else if !column-count == 2 then
+            make-title-space ctx conf#title conf#author conf#date
+          else
+            set-float ()
+        ))
+        (fun () -> (
+          % ページごとにしか呼び出されない
+          match !float-ref with
+          | [] -> block-nil
+          | _ ->
+            if !page-break-status == 0 then
+              let () = page-break-status <- 1 in
+              let currentcol =
+                if 0 == !column-count mod column-number then
+                  column-number
+                else
+                  !column-count mod column-number
+              in
+              let-rec aux | 0 = block-nil | n = clear-page +++ aux (n - 1) in
+              % 最終ページでclear-pageすると段ではなく次のページに行く
+              let () = column-count <- (!column-count + (column-number - currentcol)) in
+              let () = float-skip <- 0pt in
+              clear-page
+            else
+              block-nil
+        ))
+        (fun _ ->
+          (|
+            text-height = text-height;
+            text-origin = text-origin;
+          |)
+        )
+        (fun break -> (|
+          header-origin = (0pt, 0pt);
+          header-content = block-nil;
+          footer-origin = ((paper-width -' column-width) *' 0.5, paper-height -' (paper-height -' text-height) *' 0.25);
+          footer-content =
+            inline-fil
+            ++ (break#page-number |> arabic |> embed-string |> read-inline (ctx |> set-font-size (normal-size *' 0.8)))
+            ++ inline-fil
+            |> line-break true true ctx
+          ;
+        |))
+        (bb +++ hook-bb)
+    in
+    let () = !outline-ref |> List.reverse |> register-outline in
+    document
+
+end
+
+module AreLogo : sig
+
+  direct \SATySFi : [] inline-cmd
+  direct \TeX : [] inline-cmd
+  direct \LaTeX : [] inline-cmd
+  direct \XeTeX : [] inline-cmd
+  direct \pLaTeX : [] inline-cmd
+
+end = struct
+
+  let kern l = inline-skip (0pt -' l)
+
+  let get-em-ex ctx =
+    let (em, _, _) = {M} |> read-inline ctx |> get-natural-metrics in
+    let (_, ex, _) = {x} |> read-inline ctx |> get-natural-metrics in
+    (em, ex)
+
+  let-inline \math m = {}
+  let ctx-none = get-initial-context 0pt (command \math) |> set-font-size 0pt
+  let logo-box actual-text ib =
+    let (w, h, d) = get-natural-metrics ib in
+    let graphics =
+      inline-graphics w h d (fun point -> [draw-text point ib])
+    in
+    let actual =
+      actual-text |> embed-string |> read-inline ctx-none
+    in
+    actual ++ graphics
+    |> inline-frame-inner (0pt, 0pt, 0pt, 0pt) (fun _ _ _ _ -> [])
+    |> script-guard Latin
+
+  % from bxtexlogo.sty (https://github.com/zr-tex8r/BXtexlogo)
+  let-inline ctx \SATySFi =
+    let (em, _) = get-em-ex ctx in
+    let s = {S} |> read-inline ctx in
+    let a = {A} |> read-inline ctx in
+    let t = {T} |> read-inline ctx in
+    let y = {Y} |> read-inline (ctx |> set-manual-rising (em *' (0. -. 0.2))) in
+    let f = {F} |> read-inline ctx in
+    let i = {I} |> read-inline (ctx |> set-manual-rising (em *' (0. -. 0.2))) in
+    let ib =
+      s ++ kern (em *' 0.1) ++ a ++ kern (em *' 0.18) ++ t ++ kern (em *' 0.22)
+      ++ y ++ kern (em *' 0.08) ++ s ++kern (em *' 0.04) ++ f ++ kern (em *' 0.12) ++ i
+    in
+    ib |> logo-box `SATySFi`
+
+  % from LaTeX kernel (https://github.com/latex3/latex2e)
+  let-inline ctx \TeX =
+    let (em, ex) = get-em-ex ctx in
+    let t = {T} |> read-inline ctx in
+    let x = {X} |> read-inline ctx in
+    let e = {E} |> read-inline (ctx |> set-manual-rising (ex *' (0. -. 0.5))) in
+    let ib =
+      t ++ kern (em *' 0.1667) ++ e ++ kern (em *' 0.125) ++ x
+    in
+    ib |> logo-box `TeX`
+
+  % from LaTeX kernel (https://github.com/latex3/latex2e)
+  let-inline ctx \LaTeX =
+    let (em, ex) = get-em-ex ctx in
+    let (_, ht, _) = {T} |> read-inline ctx |> get-natural-metrics in
+    let size = get-font-size ctx in
+    let a =
+      let sca = {} |> read-inline ctx in
+      let (wsca, hsca, _) = sca |> get-natural-metrics in
+      if 0pt <' wsca then
+        {} |> read-inline (ctx |> set-manual-rising (ht -' hsca))
+      else
+        let nctx = ctx |> set-font-size (size *' 0.7) in
+        let (_, ha, _) = {A} |> read-inline nctx |> get-natural-metrics in
+        {A} |> read-inline (nctx |> set-manual-rising (ht -' ha))
+    in
+    let l = {L} |> read-inline ctx in
+    let tex = {\TeX;} |> read-inline ctx in
+    let ib =
+      l ++ kern (em *' 0.36) ++ a ++ kern (em *'0.15) ++ tex
+    in
+    ib |> logo-box `LaTeX`
+
+  % from hologo.sty (https://github.com/ho-tex/hologo)
+  let-inline ctx \XeTeX =
+    let (em, ex) = get-em-ex ctx in
+    let x = {X} |> read-inline ctx in
+    let e =
+      let nctx = ctx |> set-manual-rising (ex *' (0. -. 0.5)) in
+      let ue = {Ǝ} |> read-inline nctx in
+      let (wee, _, _) = ue |> get-natural-metrics in
+      if 0pt <' wee then
+        ue
+      else
+        let ne = {E} |> read-inline nctx in
+        let (wne, hne, dne) = ne |> get-natural-metrics in
+        let f point =
+          let (x, y) = point in
+          ne
+          |> draw-text (0pt, 0pt)
+          |> linear-transform-graphics (0. -. 1.) 0. 0. 1.
+          |> shift-graphics (x +' wne, y)
+          |> (fun g -> [g])
+        in
+        inline-graphics wne hne dne f
+
+    in
+    let tex = {\TeX;} |> read-inline ctx in
+    let ib =
+      x ++ kern (em *' 0.1) ++ e ++ kern (em *' 0.15) ++ tex
+    in
+    ib |> logo-box `XeTeX`
+
+  let-inline ctx \pLaTeX =
+    {p\LaTeX;} |> read-inline ctx |> logo-box `pLaTeX`
+
+end
+
+module AreItemize : sig
+
+  direct \listing : [itemize] inline-cmd
+  direct +listing : [itemize] block-cmd
+
+end = struct
+
+  let make-label ctx depth =
+    let size = get-font-size ctx in
+    inline-graphics 0pt 0pt 0pt (fun (x, y) -> (
+      let margin = size *' 0.3 in
+      let yshift = size *' 0.4 in
+      start-path (x -' margin, y +' yshift)
+        |> line-to (x -' size +' margin, y +' yshift)
+        |> terminate-path
+        |> stroke 0.4pt (Gray(0.))
+      |> (fun g -> [g])
+    ))
+  let list-indent ctx depth =
+    let (w, _, _) = {漢} |> read-inline ctx |> get-natural-metrics in
+    (w *' (float depth)) *' 2.
+
+  let make-item ctx depth item =
+    let deco-set =
+      let deco _ _ _ _ = [] in
+      (deco, deco, deco, deco)
+    in
+    let f ctx =
+      let ib =
+        make-label ctx depth
+        ++ read-inline ctx item
+        ++ inline-fil
+      in
+      ib |> line-break true true ctx
+    in
+    block-frame-breakable ctx (list-indent ctx depth, 0pt, 0pt, 0pt) deco-set f
+
+  let-rec parse-itemize ctx depth continuation itemize =
+    let (Item(parent, children)) = itemize in
+    let parent-item =
+      if depth == 0 then
+        block-nil
+      else
+        continuation ctx depth parent in
+    match children with
+    | [] -> [parent-item]
+    | _ ->
+      let children-list =
+        List.map (parse-itemize ctx (depth + 1) continuation) children |> List.concat
+      in
+      parent-item :: children-list
+
+  let-block ctx +listing itemize =
+    let bb =
+      parse-itemize ctx 0 make-item itemize
+      |> List.fold-left (+++) block-nil
+    in
+    let size = get-font-size ctx in
+    let gc = DrawGrid.get-grid-config ctx in
+    let margin = gc#font-width *' 0.5 +' (gc#leading -' gc#font-height -' gc#font-depth) *' 0.5 in
+    block-skip margin
+    +++ bb
+    +++ block-skip margin
+
+  let-inline ctx \listing itemize =
+    let ib =
+      '<+listing(itemize);>
+      |> read-block ctx
+      |> embed-block-breakable ctx
+    in
+    inline-fil ++ ib ++ omit-skip-after
+
+end
+
+module AreMath : sig
+
+  direct \neq : [] math-cmd
+  direct \times : [] math-cmd
+  direct \leq : [] math-cmd
+  direct \min : [] math-cmd
+
+  direct \unit : [inline-text; inline-text] inline-cmd
+  direct \unitm : [inline-text; inline-text] math-cmd
+
+  direct \textm : [inline-text] math-cmd
+
+  direct +align : [(math list) list] block-cmd
+  direct \align : [(math list) list] inline-cmd
+
+end = struct
+
+  let-math \neq = math-char MathRel `≠`
+  let-math \times = math-char MathBin `×`
+  let-math \leq = math-char MathRel `≤`
+  let-math \min =
+    math-char MathOp `min`
+
+  let-inline ctx \unit num unit =
+    let nm =
+      text-in-math MathOrd (fun _ ->
+        num |> read-inline ctx
+      )
+    in
+    let um =
+      text-in-math MathPrefix (fun _ ->
+        unit |> read-inline ctx
+      )
+    in
+    math-concat nm um
+    |> embed-math ctx
+  let-math \unitm num unit =
+    text-in-math MathOrd (fun ctx ->
+      {\unit(num)(unit);} |> read-inline ctx
+    )
+
+  let-math \textm it =
+    text-in-math MathOrd (fun ctx ->
+      it
+      |> read-inline ctx
+      |> inline-frame-outer (0pt, 0pt, 0pt, 0pt) (fun _ _ _ _ -> [])
+    )
+
+  let-block ctx +align lines =
+    let gc = DrawGrid.get-grid-config ctx in
+    let colgap = gc#font-width in
+    let linegap = gc#font-width *' 0.4 in
+    let indent = gc#font-width *' 2.0 in
+    let cells =
+      lines
+      |> List.map-adjacent (fun line prelineopt _ -> (
+        line
+        |> List.mapi-adjacent (fun i m preopt postopt -> (
+          let ib = embed-math ctx m in
+          let prespaceopt =
+            match preopt with
+            | Some(pre) -> (
+              let spaceopt = space-between-maths ctx pre m in
+              match get-right-math-class ctx pre with
+              | Some(MathBin) -> (
+                match get-left-math-class ctx m with
+                | Some(MathBin) -> spaceopt
+                | Some(MathRel) -> spaceopt
+                | _ -> None
+              )
+              | Some(MathRel) -> (
+                match get-left-math-class ctx m with
+                | Some(MathBin) -> spaceopt
+                | Some(MathRel) -> spaceopt
+                | _ -> None
+              )
+              | _ ->
+                if i mod 2 == 1 then
+                  let (w, _, _) = embed-math ctx pre |> get-natural-metrics in
+                  if 0pt <' w then
+                    spaceopt
+                  else (
+                    % 前の行からの続き
+                    % マイナスでも大丈夫
+                    match prelineopt with
+                    | Some(preline) -> (
+                      match List.nth i preline with
+                      | Some(precell) ->
+                        space-between-maths ctx precell m
+                      | None -> spaceopt
+                    )
+                    | None -> spaceopt
+                  )
+                else
+                  spaceopt
+            )
+            | None -> None
+          in
+          let postspaceopt =
+            match postopt with
+            | Some(post) -> (
+              match get-left-math-class ctx post with
+              | Some(MathBin) -> None
+              | Some(MathRel) -> None
+              | _ -> space-between-maths ctx m post
+            )
+            | None -> None
+          in
+          let prespace =
+            match prespaceopt with
+            | Some(s) -> s
+            | None -> inline-nil
+          in
+          let postspace =
+            match postspaceopt with
+            | Some(s) -> s
+            | None -> inline-nil
+          in
+          let ib-with-space =
+            if i mod 2 == 0 then
+              inline-fil ++ ib ++ postspace
+            else
+              match postopt with
+              | Some(_) ->
+                prespace ++ ib ++ inline-fil ++ inline-skip colgap
+              | None ->
+                prespace ++ ib ++ inline-fil
+          in
+          NormalCell((0pt, 0pt, linegap, linegap), ib-with-space)
+        ))
+      ))
+    in
+    let bb =
+      let table =
+        tabular cells (fun _ _ -> [])
+      in
+      inline-skip indent ++ table ++ inline-fil
+      |> inline-frame-outer (0pt, 0pt, 0pt, 0pt) (fun _ _ _ _ -> [])
+      |> line-break true true ctx
+    in
+    let margin = gc#font-width *' 0.5 in
+    block-skip margin
+    +++ bb
+    +++ block-skip margin
+
+  let-inline ctx \align lines =
+    inline-fil
+    ++ embed-block-breakable ctx ('<+align(lines);> |> read-block ctx)
+    ++ omit-skip-after
+
+end
+
+module AreSymbol : sig
+
+  direct \exclamation : [] inline-cmd
+  direct \ellipsis : [] inline-cmd
+
+end = struct
+
+  let-inline ctx \exclamation =
+    let ex =
+      {！} |> read-inline ctx
+    in
+    let (size, _, _) = ex |> get-natural-metrics in
+    let glue =
+      inline-glue (size *' 0.5) (size *' 0.25) (size *' 0.25)
+    in
+    ex ++ glue
+
+  let-inline ctx \ellipsis =
+    let ctx-new =
+      ctx
+      |> set-font Latin (get-font Kana ctx)
+    in
+    {…}
+    |> read-inline ctx-new
+    |> script-guard Kana
+
+end
+
+module AreFont : sig
+
+  direct \show-metric : [length -> length -> length -> length; inline-text] inline-cmd
+  direct \show-width : [inline-text] inline-cmd
+  direct \show-height : [inline-text] inline-cmd
+  direct \show-depth : [inline-text] inline-cmd
+  direct \show-total-height : [inline-text] inline-cmd
+
+  direct \no-lig : [inline-text] inline-cmd
+
+end = struct
+
+  let-inline ctx \show-metric f it =
+    let (w, h, d) = read-inline ctx it |> get-natural-metrics in
+    let to-it l =
+      l /' 1pt |> show-float |> (fun ns -> (
+        let [last] = string-sub ns ((string-length ns) - 1) 1 |> string-explode in
+        let [dot] = `.` |> string-explode in
+        if last == dot then
+          ns ^ `0`
+        else
+          ns
+      )) |> embed-string
+    in
+    f w h d |> to-it |> read-inline ctx
+  let-inline \show-width it =
+    {\unit{\show-metric((fun w _ _ -> w))(it);}{pt}}
+  let-inline \show-height it =
+    {\unit{\show-metric((fun _ h _ -> h))(it);}{pt}}
+  let-inline \show-depth it =
+    {\unit{\show-metric((fun _ _ d -> d))(it);}{pt}}
+  let-inline \show-total-height it =
+    {\unit{\show-metric((fun _ h d -> h +' d))(it);}{pt}}
+
+  let-inline ctx \no-lig it =
+    let no-lig-word it-list =
+      let aux ib char leftopt rightopt =
+        match leftopt with
+        | Some(left) ->
+          let left-ib = left |> read-inline ctx in
+          let char-ib = char |> read-inline ctx in
+          let lig-ib = {#left;#char;} |> read-inline ctx in
+          let (lw, _, _) = left-ib |> get-natural-metrics in
+          let (cw, _, _) = char-ib |> get-natural-metrics in
+          let (w, _, _) = lig-ib |> get-natural-metrics in
+          ib ++ inline-skip (w -' lw -' cw) ++ char-ib
+        | None -> ib ++ read-inline ctx char
+      in
+      List.fold-left-adjacent aux inline-nil it-list
+      |> inline-frame-inner (0pt, 0pt, 0pt, 0pt) (fun _ _ _ _ -> [])
+      |> script-guard Latin
+    in
+    let space-ib = #` `# |> embed-string |> read-inline ctx in
+    let no-lig-words words =
+      let aux i ib word =
+        let word-ib =
+          word
+          |> string-explode
+          |>  List.map (fun i -> [i] |> string-unexplode |> embed-string)
+          |> no-lig-word
+        in
+        if 0 < i then
+          ib ++ space-ib ++ word-ib
+        else
+          word-ib
+      in
+      List.fold-lefti aux inline-nil words
+    in
+    let words =
+      it
+      |> read-inline ctx
+      |> extract-string
+      |> split-on-regexp (regexp-of-string #` `#)
+      |> List.map (fun (_, word) -> word)
+    in
+    no-lig-words words
+
+end
+
+module AreCode : sig
+
+  direct \code : [inline-text] inline-cmd
+  direct +code : [string] block-cmd
+  direct \variable : [math] inline-cmd
+
+  direct \eval : [inline-boxes] inline-cmd
+  direct +eval : [block-boxes] block-cmd
+  direct \eval-text : [inline-text] inline-cmd
+  direct +eval-text : [block-text] block-cmd
+  direct \eval-ctx : [(context -> inline-boxes)] inline-cmd
+  direct +eval-ctx : [(context -> block-boxes)] block-cmd
+
+  direct \renew-ctx : [(context -> context); inline-text] inline-cmd
+  direct +renew-ctx : [(context -> context); block-text] block-cmd
+
+  direct \file : [string?; inline-text] inline-cmd
+  direct \library : [string?; inline-text] inline-cmd
+  direct \class : [string?; inline-text] inline-cmd
+  direct \command : [string?; inline-text] inline-cmd
+
+  direct \code-float : [string?; inline-text; string] inline-cmd
+  direct +code-float : [string?; inline-text; string] block-cmd
+
+  direct \code-float-file : [string?; inline-text; string] inline-cmd
+  direct +code-float-file : [string?; inline-text; string] block-cmd
+
+end = struct
+
+  let-inline ctx \code c =
+    let ctx-new = ctx |> ShowExplCmd.set-code-font in
+    c |> read-inline ctx-new |> script-guard Latin
+  let-block ctx +code c =
+    ShowExplCmd.code-block ctx c
+  let-inline ctx \variable v =
+    v |> embed-math ctx |> script-guard Latin
+
+  let-inline ctx \eval c = c
+  let-block ctx +eval c = c
+  let-inline \eval-text c = c
+  let-block +eval-text c = c
+  let-inline ctx \eval-ctx f = f ctx
+  let-block ctx +eval-ctx f = f ctx
+
+  let-inline ctx \renew-ctx f it =
+    it |> read-inline (ctx |> f)
+  let-block ctx +renew-ctx f bt =
+    bt |> read-block (ctx |> f)
+
+  let file-font = (`lmsans`, 1.08, 0.)
+  let set-file-font ctx =
+    ctx
+    |> set-hyphen-penalty 100000 % 10000が上限のはずだがそれだと効かない場合あり
+    |> set-font Latin file-font
+  let file ctx urlopt it =
+    let ib = it |> read-inline ctx in
+    match urlopt with
+    | Some(url) ->
+      {\href(url){\eval(ib);}} |> read-inline ctx
+    | None ->
+      ib
+  let-inline ctx \file ?:urlopt it =
+    file (ctx |> set-file-font) urlopt it
+  let-inline ctx \library ?:urlopt it =
+    file (ctx |> set-file-font) urlopt it
+  let-inline ctx \class ?:urlopt it =
+    file (ctx |> set-file-font) urlopt it
+
+  let-inline ctx \command ?:urlopt it =
+    file (ctx |> ShowExplCmd.set-code-font) urlopt it
+
+  let-mutable float-code-count <- 0
+  let float-code hook-page ctx labelopt title c =
+    Are.add-float hook-page ctx (fun ctx-new -> (
+      let text-width = get-text-width ctx in
+      let normal-size = get-font-size ctx-new in
+      let scale =
+        let base-size = normal-size *' 0.8 in
+        let size = text-width *' (1. /. (text-width /' base-size |> round |> float)) in
+        size /' normal-size
+      in
+      let ctx-code =
+        ctx-new
+        |> set-font-size (normal-size *' scale)
+        |> set-leading ((normal-size *' scale) *' 1.75)
+      in
+      let caption =
+        let () = float-code-count <- !float-code-count + 1 in
+        let count-it = !float-code-count |> arabic |> embed-string in
+        let ctx-cap =
+          ctx-new
+          |> set-font-size (normal-size *' 0.8)
+          |> set-leading ((normal-size *' 0.8) *' 1.75)
+        in
+        let title-ib =
+          {リスト#count-it;：#title;}
+          |> read-inline ctx-cap
+        in
+        let label-ib =
+          match labelopt with
+          | Some(l) ->
+            let () = register-cross-reference l (!float-code-count |> arabic) in
+            {\hyper-target(l);} |> read-inline ctx-cap
+          | None -> inline-nil
+        in
+        label-ib ++ title-ib ++ inline-fil
+        |> line-break true false ctx-cap
+      in
+      let deco-set =
+        let deco _ _ _ _ = [] in
+        (deco, deco, deco, deco)
+      in
+      caption +++ ShowExplCmd.code-block ctx-code c
+      +++ block-frame-breakable ctx (0pt, 0pt, 0pt, normal-size *' 1.) deco-set (fun _ -> block-nil)
+    ))
+
+  let line-break-string = string-unexplode [10]
+
+  let delet-first-and-last-empty-line c =
+    let ((firsti, firsts) :: lst) = c |> split-into-lines in
+    let ((taili, tails) :: rlst) = List.reverse lst in
+    let (first :: total-lst) =
+      let tmp-lst =
+        if string-length tails == 0 then
+          List.reverse rlst
+        else
+          List.reverse ((taili, tails) :: rlst)
+      in
+      if string-length firsts == 0 then
+        tmp-lst
+      else
+        (firsti, firsts) :: tmp-lst
+    in
+    let aux i (ci, _) =
+      if 0 < i && i < ci then
+        ci
+      else
+        i
+    in
+    let indent-amount =
+      let result =
+        first :: total-lst
+        |> List.fold-left aux 1000
+      in
+      if result == 1000 then 0 else result
+    in
+    let parse-line (i, line) =
+      let indent =
+        let-rec repeat-space | 0 = ` ` | n = #` `# ^ repeat-space (n - 1) in
+        if i - indent-amount < 0 then
+          let () = `[Warning] invalid indentation in a code-float` |> display-message in
+          ` `
+        else
+          repeat-space (i - indent-amount)
+      in
+      indent ^ line
+    in
+    let aux lines line =
+      lines ^ line-break-string ^ (parse-line) line
+    in
+    total-lst
+    |> List.fold-left aux (parse-line first)
+
+  let-inline ctx \code-float ?:labelopt title c =
+    float-code hook-page-break ctx labelopt title (delet-first-and-last-empty-line c)
+  let-block ctx +code-float ?:labelopt title c =
+    float-code hook-page-break-block ctx labelopt title (delet-first-and-last-empty-line c)
+  let code-read-file hook-page ctx labelopt title file =
+    let code =
+      let (first-line :: lines) = read-file file in
+      lines
+      |> List.fold-left (fun l r -> l ^ line-break-string ^ r) first-line
+    in
+    float-code hook-page ctx labelopt title code
+  let-inline ctx \code-float-file ?:labelopt title file =
+    code-read-file hook-page-break ctx labelopt title file
+  let-block ctx +code-float-file ?:labelopt title file =
+    code-read-file hook-page-break-block ctx labelopt title file
+
+end
+
+module AreGrid : sig
+
+  direct \draw-grid-inline : [inline-text] inline-cmd
+  direct \draw-grid-this-line : [length?; 'a] inline-cmd
+
+  val show-expl-inline-merge-grid : context -> string option -> inline-boxes -> inline-boxes -> inline-boxes
+  val show-expl-block-merge-grid : context -> string option -> block-boxes -> block-boxes -> block-boxes
+
+end = struct
+
+  let-inline ctx \draw-grid-inline it =
+    let gc = DrawGrid.get-grid-config ctx in
+    let (_, h, _) = it |> read-inline ctx |> get-natural-metrics in
+    let ib-grid = {\draw-grid{#it;}} |> read-inline ctx in
+    let end-grid (x, y) =
+      let gthick = gc#grid-thickness in
+      start-path (x +' gthick *' 0.5, y +' h -' gc#font-height +' gc#grid-height +' gthick *' 0.5)
+        |> line-to (x +' gthick *' 0.5, y +' h -' gc#font-height -' gc#grid-depth -' gthick *' 0.5)
+        |> terminate-path
+        |> stroke gthick (Gray(0.))
+      |> (fun g -> [g])
+    in
+    ib-grid ++ inline-graphics 0pt 0pt 0pt end-grid
+
+  let-inline ctx \draw-grid-this-line ?:indentopt _ =
+    let indent =
+      match indentopt with
+      | Some(i) -> i
+      | None -> 0pt
+    in
+    let line-width = get-text-width ctx -' indent in
+    let gc = DrawGrid.get-grid-config ctx in
+    let phantom = inline-graphics line-width gc#font-height gc#font-depth (fun _ -> []) in
+    let ib =
+      {\draw-grid{\eval(phantom);}} |> read-inline ctx
+    in
+    inline-graphics 0pt 0pt 0pt (fun (x, y) -> (
+      [draw-text (Are.get-column-start x +' indent, y) ib]
+    ))
+    ++ omit-skip-after
+
+  let show-expl-inline-merge-grid ctx labelopt code-ib output-ib =
+    let label = ShowExplCmd.hyper-target labelopt in
+    let pre = {} |> read-inline ctx in
+    let insertion = {とすると} |> read-inline ctx in
+    let post = {} |> read-inline ctx in
+    let output-ib-new =
+      {\draw-grid-inline{\eval(output-ib);}} |> read-inline ctx
+    in
+    pre ++ code-ib ++ label ++ insertion ++ output-ib-new ++ post
+  let show-expl-block-merge-grid ctx labelopt code-bb output-bb =
+    let pre = '<> |> read-block ctx in
+    let insertion = ({このコードから次の出力を得る：} |> read-inline ctx) ++ inline-fil |> line-break true true ctx in
+    let post = '<> |> read-block ctx in
+    let output-bb-new =
+      '<+draw-grid<+eval(output-bb);>> |> read-block ctx
+    in
+    pre +++ (code-bb |> ShowExplCmd.hyper-target-block ctx labelopt) +++ insertion +++ output-bb-new +++ post
+
+end
+
+  let-inline \show-expl-grid-ctx@ ~s c =
+    ~(
+      ShowExpl0.show-expl-without-end &(ShowExplCmd.show-expl-inline (Some(ShowExplCmd.show-expl-to-ib AreGrid.show-expl-inline-merge-grid)))
+        s c
+    )
+  let-inline \show-expl-grid@ ~s c =
+    ~(
+      ShowExpl0.show-expl-without-end &(ShowExplCmd.show-expl-inline (Some(ShowExplCmd.show-expl-to-ib AreGrid.show-expl-inline-merge-grid)))
+        s &(fun ctx -> ~c |> read-inline ctx)
+    )
+  let-block +show-expl-grid-ctx@ ~s c =
+    ~(
+      ShowExpl0.show-expl-without-end &(ShowExplCmd.show-expl-block (Some(ShowExplCmd.show-expl-to-bb AreGrid.show-expl-block-merge-grid)))
+        s c
+    )
+  let-block +show-expl-grid@ ~s c =
+    ~(
+      ShowExpl0.show-expl-without-end &(ShowExplCmd.show-expl-block (Some(ShowExplCmd.show-expl-to-bb AreGrid.show-expl-block-merge-grid)))
+        s &(fun ctx -> ~c |> read-block ctx)
+    )
+
+%% EOF

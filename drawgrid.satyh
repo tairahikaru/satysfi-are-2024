@@ -1,0 +1,307 @@
+%% drawgrid.satyh
+% https://github.com/tairahikaru/satysfi-are-2024
+@require: list
+
+  type grid-config = (|
+    font-width : length;
+    font-height : length;
+    font-depth : length;
+    grid-width : length;
+    grid-height : length;
+    grid-depth : length;
+    grid-cycle : int;
+    grid-thickness: length;
+    grid-color: color;
+    %grid-box : graphics list;
+    %grid-box-special : graphics list;
+    leading: length;
+  |)
+
+module DrawGrid : sig
+
+  val draw-grid : grid-config -> (length * length) -> (length * length) -> graphics list
+
+  val get-grid-config : context -> grid-config
+
+  val page-grid
+    : ((|page-number : int|) -> (|grid-config : grid-config; line-width : length;|))
+    -> page
+    -> length list
+    -> ((|page-number : int|) -> (| text-origin : (length * length); text-height : length |))
+    -> (|page-number : int|)
+    -> inline-boxes
+
+  val grid-page-break-multicolumn
+    : ((|page-number : int|) -> (|grid-config : grid-config; line-width : length;|))
+    -> page
+    -> length list
+    -> (unit -> block-boxes)
+    -> (unit -> block-boxes)
+    -> ((|page-number : int|) -> (| text-origin : (length * length); text-height : length |))
+    -> ((|page-number : int|) -> (| header-origin : (length * length); header-content : block-boxes; footer-origin : (length * length); footer-content : block-boxes |))
+    -> block-boxes
+    -> document
+  val grid-page-break-two-column
+    : ((|page-number : int|) -> (|grid-config : grid-config; line-width : length;|))
+    -> page
+    -> length
+    -> (unit -> block-boxes)
+    -> ((|page-number : int|) -> (| text-origin : (length * length); text-height : length |))
+    -> ((|page-number : int|) -> (| header-origin : (length * length); header-content : block-boxes; footer-origin : (length * length); footer-content : block-boxes |))
+    -> block-boxes
+    -> document
+  val grid-page-break
+    : ((|page-number : int|) -> (|grid-config : grid-config; line-width : length;|))
+    -> page
+    -> ((|page-number : int|) -> (| text-origin : (length * length); text-height : length |))
+    -> ((|page-number : int|) -> (| header-origin : (length * length); header-content : block-boxes; footer-origin : (length * length); footer-content : block-boxes |))
+    -> block-boxes
+    -> document
+
+  direct \draw-grid : [(grid-config -> grid-config)?; inline-text] inline-cmd
+  direct +draw-grid : [(grid-config -> grid-config)?; block-text] block-cmd
+
+end = struct
+
+
+  %% utils
+
+  let nonpositive length =
+    if length <' 0pt then
+      true
+    else
+      if length >' 0pt then
+        false
+      else
+        true
+
+  % from tombo/tombo.satyh
+  let get-page-size page =
+    match page with
+    | A0Paper -> (841mm, 1189mm)
+    | A1Paper -> (594mm, 841mm)
+    | A2Paper -> (420mm, 594mm)
+    | A3Paper -> (297mm, 420mm)
+    | A4Paper -> (210mm, 297mm)
+    | A5Paper -> (148mm, 210mm)
+    | USLetter -> (8.5inch, 11inch)
+    | USLegal -> (26inch, 37inch)
+    | UserDefinedPaper (w, h) -> (w, h)
+
+  % プリアンブルで使うとfont not found error
+  let get-grid-config ctx =
+    let test-ib = {（漢じ} |> read-inline ctx in
+    let (tw, fh, fd) = test-ib |> get-natural-metrics in
+    let line-width = get-text-width ctx in
+    let fw =
+      let (_, scale, _) = get-font HanIdeographic ctx in
+      let size = get-font-size ctx in
+      size *' scale
+    in
+    let test-line = test-ib ++ inline-skip (line-width -' tw *' 2.) ++ test-ib in
+    let bh =
+      test-line ++ (discretionary (- 10000) inline-nil inline-nil inline-nil) ++ test-line
+      |> line-break true true ctx
+      |> get-natural-length
+    in
+    let leading = bh -' fh -' fd in
+    let () =
+      if leading <' fh +' fd then
+        abort-with-message `Failed to get leading in DrawGrid.get-gird-config`
+      else
+        ()
+    in
+    (|
+      font-width = fw;
+      font-height = fh;
+      font-depth = fd;
+      grid-width = fw;
+      grid-height = fw *' 0.88;
+      grid-depth = fw *' 0.12;
+      grid-cycle = 5;
+      grid-thickness = 0.2pt;
+      grid-color = CMYK(1., 0., 0., 0.);
+      leading = leading;
+    |)
+
+  %% draw-grid
+
+  % (x, y)を左上とするgridのgraphics-list返す
+  let draw-grid grid-config (width, height) (x,y) =
+    let fw = grid-config#font-width in
+    let fh = grid-config#font-height in
+    let fd = grid-config#font-depth in
+    let fhd = fh +' fd in
+    let gw = grid-config#grid-width in
+    let gh = grid-config#grid-height in
+    let gd = grid-config#grid-depth in
+    let ghd = gh +' gd in
+    let gcolor = grid-config#grid-color in
+    let gthick = grid-config#grid-thickness in
+    let gcycle = grid-config#grid-cycle in
+    let leading = grid-config#leading in
+    let grid-line =
+      % 左上が (0,0)、右下が(gw,-ghd)
+      let grid-center =
+        start-path (gw *' 0.5, 0pt -' ghd)
+          |> line-to (gw *' 0.5, (0pt -' ghd) *' 0.8)
+          |> close-with-line
+          |> stroke gthick gcolor
+        |> (fun g -> [g])
+      in
+      let grid-box =
+        start-path (0pt, 0pt)
+          |> line-to (0pt, 0pt -' ghd)
+          |> line-to (gw, 0pt -' ghd)
+          |> line-to (gw, 0pt)
+          |> close-with-line
+          |> stroke gthick gcolor
+        |> (fun g -> g :: grid-center)
+      in
+      let grid-box-special =
+        let xmargin = gw *' 0.1 in
+        let ymargin = ghd *' 0.1 in
+        start-path (xmargin, 0pt -' ymargin)
+          |> line-to (xmargin, ymargin -' ghd)
+          |> line-to (gw -' xmargin, ymargin -' ghd)
+          |> line-to (gw -' xmargin, 0pt -' ymargin)
+          |> close-with-line
+          |> stroke gthick gcolor
+        |> (fun g -> g :: grid-box)
+      in
+      let-rec aux w n graphics-list =
+        % 0.01ptは誤差吸収
+        if width -' w +' 0.01pt <' fw then
+          graphics-list
+        else
+          let box =
+            if n mod gcycle == 0 then
+              grid-box-special
+            else
+              grid-box
+          in
+          let xshift = (fw -' gw) *' 0.5 in
+          let yshift = (fhd -' ghd) *' 0.5 in
+          box
+          |> List.map (shift-graphics (w +' xshift, 0pt -' yshift))
+          |> List.append graphics-list
+          |> aux (w +' fw) (n + 1)
+        in
+      if nonpositive fw then % avoid infinity loop
+        []
+      else
+        aux 0pt 1 []
+    in
+    let actual-width = fw *' (width /' fw |> round |> float) in
+    let-rec aux h graphics-list =
+      if height +' h |> nonpositive then
+        graphics-list
+      else
+        let grid-linegap =
+          if List.is-empty graphics-list then
+            []
+          else
+            let linegap = leading -' ghd +' (gh -' fh) in
+            [
+              start-path (0pt, gh -' fh)
+                |> line-to (0pt, linegap)
+                |> terminate-path
+                |> stroke gthick gcolor
+            ;
+              start-path (actual-width, gh -' fh)
+                |> line-to (actual-width, linegap)
+                |> terminate-path
+                |> stroke gthick gcolor
+            ]
+        in
+        List.append grid-linegap grid-line
+        |> List.map (shift-graphics (0pt, h))
+        |> List.append graphics-list
+        |> aux (h -' leading)
+    in
+    if nonpositive leading then % avoid infinity loop
+      []
+    else
+      aux 0pt []
+      |> List.map (shift-graphics (x, y))
+
+  %% page break
+
+  let-inline \math m = {}
+  let page-grid gridf page length-list contf break =
+    let (w, h) = get-page-size page in
+    let grid-config = (gridf break)#grid-config in
+    let line-width = (gridf break)#line-width in
+    let text-height = (contf break)#text-height in
+    let (x, y) = (contf break)#text-origin in
+    let grid-list =
+      let aux l =
+        let f p = draw-grid grid-config (line-width, text-height) (x +' l, h -' y) in
+        inline-graphics line-width 0pt 0pt f
+      in
+      List.map aux (0pt :: length-list)
+    in
+    let grid-ib =
+      List.fold-left (++) inline-fil grid-list
+    in
+    let (w, _, _) = grid-ib |> get-natural-metrics in
+    grid-ib ++ inline-skip (0pt -' w)
+    |> inline-frame-inner (0pt, 0pt, 0pt, 0pt) (fun _ _ _ _ -> [])
+  let grid-page-break-multicolumn gridf page length-list colf1 colf2 contf partsf =
+    let partsf-new partsf break =
+      let parts = partsf break in
+        (|
+          header-content =
+            let ctx = get-initial-context 0pt (command \math) in
+            let grid-ib = page-grid gridf page length-list contf break in
+            (grid-ib |> line-break true true ctx)
+            +++ parts#header-content;
+          header-origin = parts#header-origin;
+          footer-content = parts#footer-content;
+          footer-origin = parts#footer-origin;
+        |)
+    in
+    page-break-multicolumn page length-list colf1 colf2 contf (partsf-new partsf)
+  let grid-page-break-two-column gridf page length colf =
+    grid-page-break-multicolumn gridf page [length] colf (fun _ -> block-nil)
+  let grid-page-break gridf page =
+    grid-page-break-multicolumn gridf page [] (fun _ -> block-nil) (fun _ -> block-nil)
+
+  %% deco
+
+  let draw-grid-deco grid-config (x, y) w h d =
+    draw-grid grid-config (w, h +' d) (x, y +' h)
+  let draw-grid-deco-right grid-config (x, y) w h d =
+    let fw = grid-config#font-width in
+    let actual-width = fw *' (w /' fw |> round |> float) in
+    let gap = w -' actual-width in
+    draw-grid-deco grid-config (x +' gap, y) actual-width h d
+  let inline-draw-grid-deco-set grid-config =
+    let d = draw-grid-deco grid-config in
+    let dr = draw-grid-deco-right grid-config in
+    (d, d, d, dr)
+  let block-draw-grid-deco-set grid-config =
+    let d = draw-grid-deco grid-config in
+    (d, d, d, d)
+  let-inline ctx \draw-grid ?:gridf it =
+    let deco-set =
+      match gridf with
+      | Some(f) ->
+        get-grid-config ctx |> f |> inline-draw-grid-deco-set
+      | None ->
+        get-grid-config ctx |> inline-draw-grid-deco-set
+    in
+    inline-frame-breakable (0pt, 0pt, 0pt, 0pt) deco-set (read-inline ctx it)
+  let-block ctx +draw-grid ?:gridf bt =
+    let deco-set =
+      match gridf with
+      | Some(f) ->
+        get-grid-config ctx |> f |> block-draw-grid-deco-set
+      | None ->
+        get-grid-config ctx |> block-draw-grid-deco-set
+    in
+    block-frame-breakable ctx (0pt, 0pt, 0pt, 0pt) deco-set (fun c -> read-block c bt)
+
+end
+
+%% EOF
